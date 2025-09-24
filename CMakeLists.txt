@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 4.0)
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fext-numeric-literals")
 project(path_finder LANGUAGES CXX CUDA)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
@@ -20,9 +19,7 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/NeKon69/cuda_wrappers
         GIT_TAG main
 )
-FetchContent_MakeAvailable(cuda_wrappers)
-set(CUDA_WRAPPERS_SOURCE ${cuda_wrappers_SOURCE_DIR}/include)
-set(CUDA_WRAPPERS_DESTINATION ${CMAKE_CURRENT_SOURCE_DIR})
+add_library(cuda_wrappers INTERFACE)
 find_package(CUDAToolkit REQUIRED)
 
 #file(MAKE_DIRECTORY ${CUDA_WRAPPERS_DESTINATION})
@@ -55,4 +52,5 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE include)
-target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart)
+target_include_directories(cuda_wrappers INTERFACE ${cuda_wrappers_SOURCE_DIR}/include)
+target_link_libraries(${PROJECT_NAME} PRIVATE cuda_wrappers CUDA::cudart)
