@@ -1,6 +1,5 @@
 #include <array>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+#include <chrono>
 #include <iostream>
 #include <queue>
 #include <random>
@@ -16,8 +15,8 @@ inline constexpr float THRESHOLD = 0.4f;
 inline constexpr type WALL = MAX_CURRENT - 2;
 inline constexpr type TARGET = MAX_CURRENT - 1;
 inline constexpr type EMPTY = 0;
-inline constexpr type SIZE = 100;
-inline constexpr type SEED = 123;
+inline constexpr type SIZE = 1000;
+inline constexpr type SEED = 234;
 
 inline constexpr std::array dr = {-1, 1, 0, 0};
 inline constexpr std::array dc = {0, 0, -1, 1};
@@ -138,9 +137,15 @@ int main() {
     noise.SetCellularJitter(0.25);
 
     auto [start, end] = prepare_matrix(mat, noise);
+    std::chrono::high_resolution_clock clock;
+    auto beginning = clock.now();
     find_shortest_path(mat, start, end);
+    auto stop = clock.now();
+    std::chrono::duration<double> diff = stop - beginning;
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(diff).count() << '\n';
+
     reconstruct_the_path(mat, end);
-    prtype_matrix(mat);
+    // prtype_matrix(mat);
 
 
     return 0;
