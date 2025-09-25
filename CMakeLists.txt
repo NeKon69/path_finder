@@ -19,12 +19,19 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/NeKon69/cuda_wrappers
         GIT_TAG main
 )
+FetchContent_Declare(
+        FastNoiseLiteCUDA
+        GIT_REPOSITORY https://github.com/NeKon69/FastNoiseLiteCUDA
+        GIT_TAG main
+)
+FetchContent_MakeAvailable(FastNoiseLiteCUDA)
 add_library(cuda_wrappers INTERFACE)
 find_package(CUDAToolkit REQUIRED)
+set(NOISE_HEADER_SOURCE ${fastnoiselitecuda_SOURCE_DIR}/include)
+set(NOISE_HEADER_DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/include/gpu/noise)
 
-#file(MAKE_DIRECTORY ${CUDA_WRAPPERS_DESTINATION})
-#file(COPY ${CUDA_WRAPPERS_SOURCE} DESTINATION ${CUDA_WRAPPERS_DESTINATION})
-
+file(MAKE_DIRECTORY ${NOISE_HEADER_DESTINATION})
+file(COPY ${NOISE_HEADER_SOURCE} DESTINATION ${NOISE_HEADER_DESTINATION})
 
 
 file(GLOB_RECURSE CPP_SOURCES src/*.cpp)
