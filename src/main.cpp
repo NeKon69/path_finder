@@ -7,8 +7,7 @@
 
 #include "FastNoiseLite.h"
 #include "common.h"
-
-#define MAX_CURRENT UINT32_MAX
+#include "gpu/path_finder.h"
 
 bool inside_bounds(type row, type col) {
 	return row >= 0 && row < SIZE && col >= 0 && col < SIZE;
@@ -131,17 +130,8 @@ int main() {
 	noise.SetCellularReturnType(FastNoiseLite::CellularReturnType_Distance2Sub);
 	noise.SetCellularDistanceFunction(FastNoiseLite::CellularDistanceFunction_Euclidean);
 	noise.SetCellularJitter(0.25);
-
 	auto [start, end] = prepare_matrix(mat, noise);
-	std::chrono::high_resolution_clock clock;
-	auto							   beginning = clock.now();
-	find_shortest_path(mat, start, end);
-	auto						  stop = clock.now();
-	std::chrono::duration<double> diff = stop - beginning;
-	std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(diff).count() << '\n';
-
-	reconstruct_the_path(mat, end);
-	// prtype_matrix(mat);
+	gpu::path_finder path_finder(mat, start, end);
 
 	return 0;
 }
