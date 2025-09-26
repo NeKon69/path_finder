@@ -5,6 +5,7 @@
 #pragma once
 #include <cuda_wrappers/buffer.h>
 
+#include "algorithm.h"
 #include "common.h"
 #include "cuda_wrappers/array.h"
 #include "cuda_wrappers/surface.h"
@@ -14,10 +15,10 @@ struct device_array {
 	raw::cuda_wrappers::channel_format_description										format;
 	raw::cuda_wrappers::array															array;
 	raw::cuda_wrappers::resource_description<raw::cuda_wrappers::resource_types::array> description;
-	raw::cuda_wrappers::surface surface;
+	raw::cuda_wrappers::surface															surface;
 	device_array(std::shared_ptr<raw::cuda_wrappers::cuda_stream> stream, int width, int height)
-		: format(cudaChannelFormatKindUnsigned, sizeof(type)),
-		  array(stream, format, width, height){
+		: format(cudaChannelFormatKindUnsigned, 8 * sizeof(type), 8 * sizeof(type)),
+		  array(stream, format, width, height) {
 		description.set_array(array.get());
 		surface.create(description);
 	}
@@ -29,16 +30,32 @@ class path_finder {
 private:
 	std::shared_ptr<raw::cuda_wrappers::cuda_stream> stream;
 	raw::cuda_wrappers::buffer<bool>				 flag;
+	raw::cuda_wrappers::buffer<position>			 path;
+	raw::cuda_wrappers::buffer<type>				 path_length;
+	raw::cuda_wrappers::buffer<position>			 points;
 	device_array									 array;
 	position										 start, end;
+	type											 width, height;
 
 public:
 	path_finder(matrix& matrix_, position start, position end)
 		: stream(std::make_shared<raw::cuda_wrappers::cuda_stream>()),
-		  flag(1, stream),
+		  flag(sizeof(bool), stream),
+		  path(matrix_.size() * matrix_[0].size(), stream),
+		  path_length(sizeof(type), stream),
+		  points(sizeof(position) * 2, stream),
 		  array(stream, matrix_.size(), matrix_[0].size()),
 		  start(start),
-		  end(end) {
+		  end(end),
+		  width(matrix_.size()),
+		  height(matrix_[0].size()) {
+		{
+			std::vector<position> start_end(2);
+			start_end[0] = start;
+			start_end[1] = end;
+			points.memcpy(start_end.data(), sizeof(position) * 2, 0, cudaMemcpyHostToDevice);
+			stream->sync();
+		}
 		std::vector<type> former_matrix(matrix_.size() * matrix_[0].size());
 		auto			  dest_iterator = former_matrix.begin();
 
@@ -51,8 +68,22 @@ public:
 	}
 
 	std::vector<position> find_path() {
-		std::vector<position> path;
-		find_path(array.); return path;
+		std::vector<position> path_cpu;
+
+		auto start = std::chrono::steady_clock::now();
+		launch_path_finding(array.surface.get(), path.get(), width, height, flag.get(),
+							path_length.get(), points.get(), stream->stream());
+		stream->sync();
+		int path_len_cpu = 0;
+		cudaMemcpy(&path_len_cpu, path_length.get(), sizeof(type), cudaMemcpyDeviceToHost);
+		path_cpu.resize(path_len_cpu);
+		cudaMemcpy(path_cpu.data(), path.get(), path_len_cpu * sizeof(type),
+				   cudaMemcpyDeviceToHost);
+		auto end = std::chrono::steady_clock::now();
+		std::cout << "Time spend on GPU pathfinding: "
+				  << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+				  << " ms" << std::endl;
+		return path_cpu;
 	}
 };
 } // namespace gpu

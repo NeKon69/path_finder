@@ -8,6 +8,8 @@
 
 #include "common.h"
 namespace gpu {
-extern void find_path(cudaSurfaceObject_t array, position* path, std::vector<position> path_cpu,
-					  type width, type height, bool* flag, cudaStream_t stream);
+extern void launch_path_finding(cudaSurfaceObject_t array, position* path,
+								type width, type height,
+								bool* flag, type* path_length, position* points,
+								cudaStream_t stream);
 }

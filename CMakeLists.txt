@@ -27,7 +27,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(FastNoiseLiteCUDA)
 add_library(cuda_wrappers INTERFACE)
 find_package(CUDAToolkit REQUIRED)
-set(NOISE_HEADER_SOURCE ${fastnoiselitecuda_SOURCE_DIR}/include)
+set(NOISE_HEADER_SOURCE ${fastnoiselitecuda_SOURCE_DIR}/include/FastNoiseLiteCUDA.h)
 set(NOISE_HEADER_DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/include/gpu/noise)
 
 file(MAKE_DIRECTORY ${NOISE_HEADER_DESTINATION})

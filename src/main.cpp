@@ -1,3 +1,5 @@
+#include <gpu/noise/FastNoiseLiteCUDA.h>
+
 #include <array>
 #include <chrono>
 #include <iostream>
@@ -5,18 +7,11 @@
 #include <random>
 #include <vector>
 
-#include "FastNoiseLite.h"
 #include "common.h"
 #include "gpu/path_finder.h"
 
-bool inside_bounds(type row, type col) {
-	return row >= 0 && row < SIZE && col >= 0 && col < SIZE;
-}
-bool is_target(type val) {
-	return val == TARGET || val == EMPTY;
-}
 bool is_path(type val) {
-	return val > 0;
+	return val > 0 && val < EMPTY;
 }
 
 void find_shortest_path(std::vector<std::vector<type>> &mat, position start, position end) {
@@ -132,6 +127,7 @@ int main() {
 	noise.SetCellularJitter(0.25);
 	auto [start, end] = prepare_matrix(mat, noise);
 	gpu::path_finder path_finder(mat, start, end);
+	path_finder.find_path();
 
 	return 0;
 }
