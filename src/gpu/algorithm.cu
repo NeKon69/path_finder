@@ -9,12 +9,25 @@
 
 namespace gpu {
 void launch_path_finding(cudaSurfaceObject_t array, position* path, type width, type height,
-						 bool* flag, type* path_length, position* points, cudaStream_t stream) {
-	void* kernel_args[] = {&array, &width, &height, &flag, &path_length};
+						 volatile type* flag, type* path_length, position* points,
+						 cudaStream_t stream) {
+	struct {
+		alignas(64) cudaSurfaceObject_t array;
+		alignas(sizeof(type) * 8) type width;
+		alignas(sizeof(type) * 8) type height;
+		alignas(64) volatile type* flag;
+		alignas(64) type* path_length;
+	} args {};
+	args.array			  = array;
+	args.width			  = width;
+	args.height			  = height;
+	args.flag			  = flag;
+	args.path_length	  = path_length;
+	void* kernel_params[] = {&args.array, &args.width, &args.height, &args.flag, &args.path_length};
 	dim3  block(8, 8);
 	dim3  grid(width / 32 + 1, height / 32 + 1);
 	CUDA_SAFE_CALL(
-		cudaLaunchCooperativeKernel(simple_path_finding, grid, block, kernel_args, 0, stream));
+		cudaLaunchCooperativeKernel(simple_path_finding, grid, block, kernel_params, 0, stream));
 	CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
 	rebuild_path_simple<<<2, 1, 0, stream>>>(array, path, points, path_length, width, height);
 	CUDA_SAFE_CALL(cudaStreamSynchronize(stream));

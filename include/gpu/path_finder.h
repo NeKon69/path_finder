@@ -29,7 +29,7 @@ struct device_array {
 class path_finder {
 private:
 	std::shared_ptr<raw::cuda_wrappers::cuda_stream> stream;
-	raw::cuda_wrappers::buffer<bool>				 flag;
+	raw::cuda_wrappers::buffer<type>				 flag;
 	raw::cuda_wrappers::buffer<position>			 path;
 	raw::cuda_wrappers::buffer<type>				 path_length;
 	raw::cuda_wrappers::buffer<position>			 points;
@@ -40,7 +40,7 @@ private:
 public:
 	path_finder(matrix& matrix_, position start, position end)
 		: stream(std::make_shared<raw::cuda_wrappers::cuda_stream>()),
-		  flag(sizeof(bool), stream),
+		  flag(sizeof(type), stream),
 		  path(matrix_.size() * matrix_[0].size(), stream),
 		  path_length(sizeof(type), stream),
 		  points(sizeof(position) * 2, stream),

@@ -8,12 +8,17 @@
 #include "gpu/kernel.h"
 namespace gpu {
 __global__ void simple_path_finding(cudaSurfaceObject_t array, type width, type height,
-									volatile bool* global_done_flag, type* length) {
+									volatile type* global_done_flag, type* length) {
 	cooperative_groups::grid_group grid = cooperative_groups::this_grid();
 	type						   x	= blockIdx.x * blockDim.x + threadIdx.x;
 	type						   y	= blockIdx.y * blockDim.y + threadIdx.y;
+	if (x == 0 && y == 0) {
+		*global_done_flag = 0;
+	}
 
-	while (!(*global_done_flag)) {
+	__syncthreads();
+
+	while ((*global_done_flag) != 1) {
 		if (inside_bounds(x, y) && is_target(surf2Dread<type>(array, x, y))) {
 			type l = 0, r = 0, u = 0, d = 0;
 			if (x > 0)
@@ -29,7 +34,7 @@ __global__ void simple_path_finding(cudaSurfaceObject_t array, type width, type 
 			if (minimal < EMPTY) {
 				if (is_real_target(surf2Dread<type>(array, x, y))) {
 					printf("Before writing to length\n");
-					*global_done_flag = true;
+					*global_done_flag = 1;
 					*length			  = minimal + 1;
 					printf("After writing to length\n");
 					__threadfence();
