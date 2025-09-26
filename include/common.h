@@ -33,7 +33,7 @@ inline constexpr type EMPTY	 = MAX_CURRENT - 3;
 static_assert(EMPTY < TARGET && TARGET < WALL && EMPTY > MAX_CURRENT / 2,
 			  "THIS IS NECESSARY FOR THE GPU WAVEFRONT TO WORK, DON'T CHANGE THAT!!!");
 inline constexpr type SIZE = 100;
-inline constexpr type SEED = 234;
+inline constexpr type SEED = 1234;
 
 inline constexpr std::array dr = {-1, 1, 0, 0};
 inline constexpr std::array dc = {0, 0, -1, 1};

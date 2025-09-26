@@ -62,7 +62,7 @@ void reconstruct_the_path(std::vector<std::vector<type>> &mat, position end) {
 		for (int col = 0; col < SIZE; ++col) {
 			type val = mat[row][col];
 			if (val > 0 && val != WALL && val != TARGET) {
-				mat[row][col] = 0;
+				mat[row][col] = EMPTY;
 			}
 		}
 	}
@@ -126,8 +126,11 @@ int main() {
 	noise.SetCellularDistanceFunction(FastNoiseLite::CellularDistanceFunction_Euclidean);
 	noise.SetCellularJitter(0.25);
 	auto [start, end] = prepare_matrix(mat, noise);
-	gpu::path_finder path_finder(mat, start, end);
-	path_finder.find_path();
+	find_shortest_path(mat, start, end);
+	reconstruct_the_path(mat, end);
+	prtype_matrix(mat);
+	// gpu::path_finder path_finder(mat, start, end);
+	// path_finder.find_path();
 
 	return 0;
 }

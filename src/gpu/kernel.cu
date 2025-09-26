@@ -7,39 +7,43 @@
 
 #include "gpu/kernel.h"
 namespace gpu {
-__global__ void simple_path_finding(cudaSurfaceObject_t array, type width, type height,
-									volatile type* global_done_flag, type* length) {
-	cooperative_groups::grid_group grid = cooperative_groups::this_grid();
+__global__ void simple_path_finding(cudaSurfaceObject_t array, position* start, type width,
+									type height, volatile type* global_done_flag, type* length) {
 	type						   x	= blockIdx.x * blockDim.x + threadIdx.x;
 	type						   y	= blockIdx.y * blockDim.y + threadIdx.y;
+	cooperative_groups::grid_group grid = cooperative_groups::this_grid();
 	if (x == 0 && y == 0) {
 		*global_done_flag = 0;
 	}
 
-	__syncthreads();
+	if (*start == position {x, y}) {
+		surf2Dwrite<type>(1, array, x * sizeof(type), y);
+	}
+
+	grid.sync();
 
 	while ((*global_done_flag) != 1) {
-		if (inside_bounds(x, y) && is_target(surf2Dread<type>(array, x, y))) {
+		if (inside_bounds(x, y) && is_target(surf2Dread<type>(array, x * sizeof(type), y))) {
 			type l = 0, r = 0, u = 0, d = 0;
 			if (x > 0)
-				l = surf2Dread<type>(array, x - 1, y);
+				l = surf2Dread<type>(array, (x - 1) * sizeof(type), y);
 			if (x < width - 1)
-				r = surf2Dread<type>(array, x + 1, y);
+				r = surf2Dread<type>(array, (x + 1) * sizeof(type), y);
 			if (y > 0)
-				d = surf2Dread<type>(array, x, y - 1);
+				d = surf2Dread<type>(array, x * sizeof(type), y - 1);
 			if (y < height - 1)
-				u = surf2Dread<type>(array, x, y + 1);
+				u = surf2Dread<type>(array, x * sizeof(type), y + 1);
 
 			type minimal = min(l, r, d, u);
 			if (minimal < EMPTY) {
-				if (is_real_target(surf2Dread<type>(array, x, y))) {
-					printf("Before writing to length\n");
+				printf("YAY i am writing to global flag!!!");
+				if (is_real_target(surf2Dread<type>(array, x * sizeof(type), y))) {
 					*global_done_flag = 1;
 					*length			  = minimal + 1;
-					printf("After writing to length\n");
 					__threadfence();
 				}
-				surf2Dwrite<type>(minimal + 1, array, x, y);
+				surf2Dwrite<type>(minimal + 1, array, x * sizeof(type), y);
+				printf("After writing to length\n");
 			}
 		}
 		grid.sync();
@@ -61,23 +65,24 @@ __global__ void rebuild_path_simple(cudaSurfaceObject_t array, position* path, p
 		type steps_to_take	 = (path_len / 2) - (path_len % 2 == 0 ? 1 : 0);
 
 		for (type i = 0; i < steps_to_take; ++i) {
-			type current_value = surf2Dread<type>(array, current_pos.first, current_pos.second);
+			type current_value =
+				surf2Dread<type>(array, current_pos.second * sizeof(type), current_pos.first);
 
 			if (current_pos.first > 0 &&
-				surf2Dread<type>(array, current_pos.first - 1, current_pos.second) ==
+				surf2Dread<type>(array, current_pos.second * sizeof(type), current_pos.first - 1) ==
 					current_value + 1) {
 				current_pos.first--;
-			} else if (current_pos.first < width - 1 &&
-					   surf2Dread<type>(array, current_pos.first + 1, current_pos.second) ==
-						   current_value + 1) {
+			} else if (current_pos.first < height - 1 &&
+					   surf2Dread<type>(array, current_pos.second * sizeof(type),
+										current_pos.first + 1) == current_value + 1) {
 				current_pos.first++;
 			} else if (current_pos.second > 0 &&
-					   surf2Dread<type>(array, current_pos.first, current_pos.second - 1) ==
-						   current_value + 1) {
+					   surf2Dread<type>(array, (current_pos.second - 1) * sizeof(type),
+										current_pos.first) == current_value + 1) {
 				current_pos.second--;
-			} else if (current_pos.second < height - 1 &&
-					   surf2Dread<type>(array, current_pos.first, current_pos.second + 1) ==
-						   current_value + 1) {
+			} else if (current_pos.second < width - 1 &&
+					   surf2Dread<type>(array, (current_pos.second + 1) * sizeof(type),
+										current_pos.first) == current_value + 1) {
 				current_pos.second++;
 			}
 			path[i + 1] = current_pos;
@@ -90,23 +95,24 @@ __global__ void rebuild_path_simple(cudaSurfaceObject_t array, position* path, p
 		type steps_to_take	 = path_len / 2;
 
 		for (type i = 0; i < steps_to_take; ++i) {
-			type current_value = surf2Dread<type>(array, current_pos.first, current_pos.second);
+			type current_value =
+				surf2Dread<type>(array, current_pos.second * sizeof(type), current_pos.first);
 
 			if (current_pos.first > 0 &&
-				surf2Dread<type>(array, current_pos.first - 1, current_pos.second) ==
+				surf2Dread<type>(array, current_pos.second * sizeof(type), current_pos.first - 1) ==
 					current_value - 1) {
 				current_pos.first--;
-			} else if (current_pos.first < width - 1 &&
-					   surf2Dread<type>(array, current_pos.first + 1, current_pos.second) ==
-						   current_value - 1) {
+			} else if (current_pos.first < height - 1 &&
+					   surf2Dread<type>(array, current_pos.second * sizeof(type),
+										current_pos.first + 1) == current_value - 1) {
 				current_pos.first++;
 			} else if (current_pos.second > 0 &&
-					   surf2Dread<type>(array, current_pos.first, current_pos.second - 1) ==
-						   current_value - 1) {
+					   surf2Dread<type>(array, (current_pos.second - 1) * sizeof(type),
+										current_pos.first) == current_value - 1) {
 				current_pos.second--;
-			} else if (current_pos.second < height - 1 &&
-					   surf2Dread<type>(array, current_pos.first, current_pos.second + 1) ==
-						   current_value - 1) {
+			} else if (current_pos.second < width - 1 &&
+					   surf2Dread<type>(array, (current_pos.second + 1) * sizeof(type),
+										current_pos.first) == current_value - 1) {
 				current_pos.second++;
 			}
 			path[path_len - 2 - i] = current_pos;
