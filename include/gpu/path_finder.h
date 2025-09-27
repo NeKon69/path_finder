@@ -17,7 +17,7 @@ struct device_array {
 	raw::cuda_wrappers::resource_description<raw::cuda_wrappers::resource_types::array> description;
 	raw::cuda_wrappers::surface															surface;
 	device_array(std::shared_ptr<raw::cuda_wrappers::cuda_stream> stream, int width, int height)
-		: format(cudaChannelFormatKindUnsigned, 8 * sizeof(type), 8 * sizeof(type)),
+		: format(cudaChannelFormatKindUnsigned, 8 * sizeof(type)),
 		  array(stream, format, width, height) {
 		description.set_array(array.get());
 		surface.create(description);
@@ -41,7 +41,7 @@ public:
 	path_finder(matrix& matrix_, position start, position end)
 		: stream(std::make_shared<raw::cuda_wrappers::cuda_stream>()),
 		  flag(sizeof(type), stream),
-		  path(matrix_.size() * matrix_[0].size(), stream),
+		  path(matrix_.size() * matrix_[0].size() * sizeof(position), stream),
 		  path_length(sizeof(type), stream),
 		  points(sizeof(position) * 2, stream),
 		  array(stream, matrix_.size(), matrix_[0].size()),

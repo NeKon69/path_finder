@@ -10,9 +10,7 @@
 #include "common.h"
 #include "gpu/path_finder.h"
 
-bool is_path(type val) {
-	return val > 0 && val < EMPTY;
-}
+
 
 void find_shortest_path(std::vector<std::vector<type>> &mat, position start, position end) {
 	std::queue<position> q;
@@ -79,10 +77,11 @@ std::pair<position, position> prepare_matrix(std::vector<std::vector<type>> &mat
 	std::uniform_int_distribution<type>	  target_dist(0, SIZE - 1);
 	const type							  row1 = target_dist(gen);
 	const type							  col1 = target_dist(gen);
-	mat[row1][col1]							   = TARGET;
-	const type row2							   = target_dist(gen);
-	const type col2							   = target_dist(gen);
-	mat[row2][col2]							   = TARGET;
+
+	mat[row1][col1] = TARGET;
+	const type row2 = target_dist(gen);
+	const type col2 = target_dist(gen);
+	mat[row2][col2] = TARGET;
 
 	for (auto row = 0; row < mat.size(); row++) {
 		for (auto col = 0; col < mat[row].size(); col++) {
@@ -115,9 +114,36 @@ void prtype_matrix(const std::vector<std::vector<type>> &mat) {
 	}
 }
 
+void print_mat_path(const std::vector<std::vector<type>> &mat, const std::vector<position> &path) {
+	for (type i = 0; i < mat.size(); ++i) {
+		for (type j = 0; j < mat[i].size(); ++j) {
+			position current_pos = {i, j};
+			if (std::find(path.begin(), path.end(), current_pos) != path.end()) {
+				std::cout << " .";
+			} else {
+				switch (mat[i][j]) {
+				case WALL:
+					std::cout << "██";
+					break;
+				case TARGET:
+					std::cout << "TT";
+					break;
+				case EMPTY:
+					std::cout << "  ";
+					break;
+				default:
+					std::cout << " *";
+					break;
+				}
+			}
+		}
+		std::cout << '\n';
+	}
+}
+
 int main() {
 	// We use (MAX_CURRENT - 1) as starting/ending positions, and (MAX_CURRENT - 2) as walls
-	std::vector	  mat(SIZE, std::vector<type>(SIZE));
+	std::vector	  mat(SIZE, std::vector<type>(SIZE, EMPTY));
 	FastNoiseLite noise;
 	noise.SetSeed(SEED);
 	noise.SetFrequency(0.5f);
@@ -126,11 +152,14 @@ int main() {
 	noise.SetCellularDistanceFunction(FastNoiseLite::CellularDistanceFunction_Euclidean);
 	noise.SetCellularJitter(0.25);
 	auto [start, end] = prepare_matrix(mat, noise);
-	find_shortest_path(mat, start, end);
-	reconstruct_the_path(mat, end);
+	// auto [start, end] = std::pair(position {0, 0}, position {4, 4});
+	// find_shortest_path(mat, start, end);
+	// reconstruct_the_path(mat, end);
+	mat[start.first][start.second] = TARGET;
+	mat[end.first][end.second]	   = TARGET;
 	prtype_matrix(mat);
-	// gpu::path_finder path_finder(mat, start, end);
-	// path_finder.find_path();
+	gpu::path_finder path_finder(mat, start, end);
+	print_mat_path(mat, path_finder.find_path());
 
 	return 0;
 }
