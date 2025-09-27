@@ -38,17 +38,17 @@ private:
 	type											 width, height;
 
 public:
-	path_finder(matrix& matrix_, position start, position end)
+	path_finder(matrix& matrix_, position start_, position end_)
 		: stream(std::make_shared<raw::cuda_wrappers::cuda_stream>()),
 		  flag(sizeof(type), stream),
 		  path(matrix_.size() * matrix_[0].size() * sizeof(position), stream),
 		  path_length(sizeof(type), stream),
 		  points(sizeof(position) * 2, stream),
-		  array(stream, matrix_.size(), matrix_[0].size()),
-		  start(start),
-		  end(end),
-		  width(matrix_.size()),
-		  height(matrix_[0].size()) {
+		  array(stream, matrix_[0].size(), matrix_.size()),
+		  start(start_.second, start_.first),
+		  end(end_.second, end_.first),
+		  width(matrix_[0].size()),
+		  height(matrix_.size()) {
 		{
 			std::vector<position> start_end(2);
 			start_end[0] = start;
@@ -71,6 +71,8 @@ public:
 		std::vector<position> path_cpu;
 
 		auto start = std::chrono::steady_clock::now();
+		// launch_path_finding(array.surface.get(), path.get(), width, height, flag.get(),
+		// path_length.get(), points.get(), stream->stream());
 		launch_path_finding(array.surface.get(), path.get(), width, height, flag.get(),
 							path_length.get(), points.get(), stream->stream());
 		stream->sync();

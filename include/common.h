@@ -34,8 +34,8 @@ inline constexpr type TARGET = MAX_CURRENT - 2;
 inline constexpr type EMPTY	 = MAX_CURRENT - 3;
 static_assert(EMPTY < TARGET && TARGET < WALL && EMPTY > MAX_CURRENT / 2,
 			  "THIS IS NECESSARY FOR THE GPU WAVEFRONT TO WORK, DON'T CHANGE THAT!!!");
-inline constexpr type SIZE = 3;
-inline constexpr type SEED = 1245;
+inline constexpr type SIZE = 200;
+inline constexpr type SEED = 1234;
 
 CONSTANT_MEM static inline constexpr int dr[] = {-1, 1, 0, 0};
 CONSTANT_MEM static inline constexpr int dc[] = {0, 0, -1, 1};

@@ -10,8 +10,6 @@
 #include "common.h"
 #include "gpu/path_finder.h"
 
-
-
 void find_shortest_path(std::vector<std::vector<type>> &mat, position start, position end) {
 	std::queue<position> q;
 	q.push(start);
@@ -117,7 +115,7 @@ void prtype_matrix(const std::vector<std::vector<type>> &mat) {
 void print_mat_path(const std::vector<std::vector<type>> &mat, const std::vector<position> &path) {
 	for (type i = 0; i < mat.size(); ++i) {
 		for (type j = 0; j < mat[i].size(); ++j) {
-			position current_pos = {i, j};
+			position current_pos = {j, i};
 			if (std::find(path.begin(), path.end(), current_pos) != path.end()) {
 				std::cout << " .";
 			} else {
@@ -157,9 +155,9 @@ int main() {
 	// reconstruct_the_path(mat, end);
 	// mat[start.first][start.second] = TARGET;
 	// mat[end.first][end.second]	   = TARGET;
-	prtype_matrix(mat);
+	// prtype_matrix(mat);
 	gpu::path_finder path_finder(mat, start, end);
-	print_mat_path(mat, path_finder.find_path());
+	path_finder.find_path();
 
 	return 0;
 }
