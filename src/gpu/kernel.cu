@@ -47,7 +47,7 @@ __global__ void simple_path_finding(cudaSurfaceObject_t array, position* start, 
 				if (is_real_target(surf2Dread<type>(array, x * sizeof(type), y))) {
 					printf("YAY i am writing to global flag %u!!!\n", minimal);
 					*global_done_flag = 1;
-					*length			  = minimal;
+					*length			  = minimal + 1;
 					__threadfence();
 				}
 				surf2Dwrite<type>(minimal + 1, array, x * sizeof(type), y);

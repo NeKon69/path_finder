@@ -155,8 +155,8 @@ int main() {
 	// auto [start, end] = std::pair(position {0, 0}, position {4, 4});
 	// find_shortest_path(mat, start, end);
 	// reconstruct_the_path(mat, end);
-	mat[start.first][start.second] = TARGET;
-	mat[end.first][end.second]	   = TARGET;
+	// mat[start.first][start.second] = TARGET;
+	// mat[end.first][end.second]	   = TARGET;
 	prtype_matrix(mat);
 	gpu::path_finder path_finder(mat, start, end);
 	print_mat_path(mat, path_finder.find_path());

@@ -77,7 +77,7 @@ public:
 		int path_len_cpu = 0;
 		cudaMemcpy(&path_len_cpu, path_length.get(), sizeof(type), cudaMemcpyDeviceToHost);
 		path_cpu.resize(path_len_cpu);
-		cudaMemcpy(path_cpu.data(), path.get(), path_len_cpu * sizeof(type),
+		cudaMemcpy(path_cpu.data(), path.get(), path_len_cpu * sizeof(position),
 				   cudaMemcpyDeviceToHost);
 		auto end = std::chrono::steady_clock::now();
 		std::cout << "Time spend on GPU pathfinding: "
