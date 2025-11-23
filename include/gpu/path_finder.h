@@ -5,6 +5,8 @@
 #pragma once
 #include <cuda_wrappers/buffer.h>
 
+#include <chrono>
+
 #include "algorithm.h"
 #include "common.h"
 #include "cuda_wrappers/array.h"
@@ -71,8 +73,6 @@ public:
 		std::vector<position> path_cpu;
 
 		auto start = std::chrono::steady_clock::now();
-		// launch_path_finding(array.surface.get(), path.get(), width, height, flag.get(),
-		// path_length.get(), points.get(), stream->stream());
 		launch_path_finding(array.surface.get(), path.get(), width, height, flag.get(),
 							path_length.get(), points.get(), stream->stream());
 		stream->sync();

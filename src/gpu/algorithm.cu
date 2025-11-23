@@ -1,9 +1,12 @@
 //
 // Created by progamers on 9/25/25.
 //
-#include <cuda_runtime.h>
 
-#include <memory>
+#include <chrono>
+#include <iostream>
+// @clang-format off
+#include <cuda_runtime.h>
+// @clang-format on
 
 #include "cuda_wrappers/error.h"
 #include "gpu/algorithm.h"
@@ -13,6 +16,7 @@ namespace gpu {
 size_t operator*(const dim3& lhs, const dim3& rhs) {
 	return lhs.x * lhs.y * lhs.z * rhs.x + rhs.y * rhs.z;
 }
+
 void launch_path_finding(cudaSurfaceObject_t array, position* path, type width, type height,
 						 volatile type* flag, type* path_length, position* points,
 						 cudaStream_t stream) {
@@ -23,9 +27,14 @@ void launch_path_finding(cudaSurfaceObject_t array, position* path, type width, 
 	if (block * grid > width * height) {
 		throw std::runtime_error("Whell happened bro, we don't have enough threads");
 	}
+	auto st = std::chrono::high_resolution_clock::now();
 	CUDA_SAFE_CALL(
 		cudaLaunchCooperativeKernel(simple_path_finding, grid, block, kernel_params, 0, stream));
 	CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
+	auto end = std::chrono::high_resolution_clock::now();
+	std::cout << "First step took: "
+			  << std::chrono::duration_cast<std::chrono::milliseconds>(end - st).count() << " ms"
+			  << std::endl;
 	rebuild_path_simple<<<1, 1, 0, stream>>>(array, path, points, path_length, width, height);
 }
 

@@ -43,13 +43,13 @@ CONSTANT_MEM static inline constexpr int dc[] = {0, 0, -1, 1};
 DEVICE_HOST inline bool is_path(type val) {
 	return val > 0 && val < EMPTY;
 }
-DEVICE_HOST inline bool inside_bounds(type row, type col) {
+inline bool DEVICE_HOST inside_bounds(type row, type col) {
 	return row >= 0 && row < SIZE && col >= 0 && col < SIZE;
 }
-DEVICE_HOST inline bool is_target(type val) {
+inline bool DEVICE_HOST is_target(type val) {
 	return val == TARGET || val == EMPTY;
 }
-DEVICE_HOST inline bool is_marked(type val) {
+inline bool DEVICE_HOST  is_marked(type val) {
 	return val > 0 && val < EMPTY;
 }
 DEVICE_HOST inline bool is_real_target(type val) {

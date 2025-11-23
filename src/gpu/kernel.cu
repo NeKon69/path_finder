@@ -3,15 +3,14 @@
 //
 #include <cooperative_groups.h>
 
-#include <thread>
-
 #include "gpu/kernel.h"
 namespace gpu {
 __global__ void simple_path_finding(cudaSurfaceObject_t array, position* start, type width,
 									type height, volatile type* global_done_flag, type* length) {
-	type						   x	= blockIdx.x * blockDim.x + threadIdx.x;
-	type						   y	= blockIdx.y * blockDim.y + threadIdx.y;
-	cooperative_groups::grid_group grid = cooperative_groups::this_grid();
+	type						   x	   = blockIdx.x * blockDim.x + threadIdx.x;
+	type						   y	   = blockIdx.y * blockDim.y + threadIdx.y;
+	bool						   updated = false;
+	cooperative_groups::grid_group grid	   = cooperative_groups::this_grid();
 	if (x == 0 && y == 0) {
 		*global_done_flag = 0;
 	}
@@ -21,8 +20,8 @@ __global__ void simple_path_finding(cudaSurfaceObject_t array, position* start, 
 	}
 
 	// if (inside_bounds(x, y)) {
-		// printf("I am thread %u, %u, and i have value %u\n", x, y,
-			   // surf2Dread<type>(array, x * sizeof(type), y));
+	// printf("I am thread %u, %u, and i have value %u\n", x, y,
+	// surf2Dread<type>(array, x * sizeof(type), y));
 	// }
 
 	__threadfence();
@@ -33,8 +32,8 @@ __global__ void simple_path_finding(cudaSurfaceObject_t array, position* start, 
 		// if (is_target(val)) {
 		// 	printf("I AM TARGET!!! %u\n", val);
 		// }
-		if (inside_bounds(x, y) && is_target(surf2Dread<type>(array, x * sizeof(type), y))) {
-			auto val = surf2Dread<type>(array, x * sizeof(type), y);
+		if (inside_bounds(x, y) && is_target(surf2Dread<type>(array, x * sizeof(type), y)) &&
+			!updated) {
 			type l = 0, r = 0, u = 0, d = 0;
 			if (x > 0)
 				l = surf2Dread<type>(array, (x - 1) * sizeof(type), y);
@@ -55,6 +54,7 @@ __global__ void simple_path_finding(cudaSurfaceObject_t array, position* start, 
 				}
 				surf2Dwrite<type>(minimal + 1, array, x * sizeof(type), y);
 				// printf("After writing to array\n");
+				updated = true;
 			}
 			// printf("I am thread %u, %u, and i have value %u\n", x, y,
 			// surf2Dread<type>(array, x * sizeof(type), y));
@@ -90,7 +90,7 @@ __global__ void rebuild_path_simple(cudaSurfaceObject_t array, position* path, p
 					((val = surf2Dread<type>(array, next_x * sizeof(type), next_y))) &&
 					is_path(val) && current_value - 1 == val) {
 					current_value = val;
-					current_pos = {next_x, next_y};
+					current_pos	  = {next_x, next_y};
 					break;
 				}
 			}

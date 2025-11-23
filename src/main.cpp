@@ -1,7 +1,5 @@
 #include <gpu/noise/FastNoiseLiteCUDA.h>
 
-#include <array>
-#include <chrono>
 #include <iostream>
 #include <queue>
 #include <random>
@@ -10,7 +8,7 @@
 #include "common.h"
 #include "gpu/path_finder.h"
 
-void find_shortest_path(std::vector<std::vector<type>> &mat, position start, position end) {
+void find_shortest_path(std::vector<std::vector<type>>& mat, position start, position end) {
 	std::queue<position> q;
 	q.push(start);
 	mat[start.first][start.second] = 1;
@@ -35,7 +33,7 @@ void find_shortest_path(std::vector<std::vector<type>> &mat, position start, pos
 	}
 }
 
-void reconstruct_the_path(std::vector<std::vector<type>> &mat, position end) {
+void reconstruct_the_path(std::vector<std::vector<type>>& mat, position end) {
 	position			  curr = end;
 	std::vector<position> path;
 	path.reserve(SIZE);
@@ -63,13 +61,13 @@ void reconstruct_the_path(std::vector<std::vector<type>> &mat, position end) {
 		}
 	}
 
-	for (const auto &[row, col] : path) {
+	for (const auto& [row, col] : path) {
 		mat[row][col] = 1;
 	}
 }
 
-std::pair<position, position> prepare_matrix(std::vector<std::vector<type>> &mat,
-											 const FastNoiseLite			&noise) {
+std::pair<position, position> prepare_matrix(std::vector<std::vector<type>>& mat,
+											 const FastNoiseLite&			 noise) {
 	std::mt19937						  gen(SEED);
 	std::uniform_real_distribution<float> dist(-0.5, 0.5);
 	std::uniform_int_distribution<type>	  target_dist(0, SIZE - 1);
@@ -95,9 +93,9 @@ std::pair<position, position> prepare_matrix(std::vector<std::vector<type>> &mat
 
 	return {{row1, col1}, {row2, col2}};
 }
-void prtype_matrix(const std::vector<std::vector<type>> &mat) {
-	for (const auto &row : mat) {
-		for (const auto &cell : row) {
+void prtype_matrix(const std::vector<std::vector<type>>& mat) {
+	for (const auto& row : mat) {
+		for (const auto& cell : row) {
 			if (cell == WALL) {
 				std::cout << "██";
 			} else if (cell == TARGET) {
@@ -112,7 +110,7 @@ void prtype_matrix(const std::vector<std::vector<type>> &mat) {
 	}
 }
 
-void print_mat_path(const std::vector<std::vector<type>> &mat, const std::vector<position> &path) {
+void print_mat_path(const std::vector<std::vector<type>>& mat, const std::vector<position>& path) {
 	for (type i = 0; i < mat.size(); ++i) {
 		for (type j = 0; j < mat[i].size(); ++j) {
 			position current_pos = {j, i};
@@ -151,8 +149,13 @@ int main() {
 	noise.SetCellularJitter(0.25);
 	auto [start, end] = prepare_matrix(mat, noise);
 	// auto [start, end] = std::pair(position {0, 0}, position {4, 4});
+	// auto beg = std::chrono::high_resolution_clock::now();
 	// find_shortest_path(mat, start, end);
 	// reconstruct_the_path(mat, end);
+	// auto endi = std::chrono::high_resolution_clock::now();
+	// std::cout << std::chrono::duration_cast<std::chrono::microseconds>(endi - beg).count()
+	// << "us\n";
+
 	// mat[start.first][start.second] = TARGET;
 	// mat[end.first][end.second]	   = TARGET;
 	// prtype_matrix(mat);
