@@ -133,3 +133,10 @@ CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
 
+
+include/cuda_wrappers
+.cache
+main
+.idea
+.nvim
+include/gpu/noise
