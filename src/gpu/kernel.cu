@@ -98,4 +98,31 @@ __global__ void rebuild_path_simple(cudaSurfaceObject_t array, position* path, p
 		}
 	}
 }
+
+__global__ void check_full_array(cudaSurfaceObject_t array, position* points, type width,
+								 type height, type cells_per_thread) {
+	uint64_t segment_idx = threadIdx.x + blockIdx.x * blockDim.x;
+	uint64_t segment_idy = threadIdx.y + blockIdx.y * blockDim.y;
+
+	uint64_t start_x = segment_idx * cells_per_thread;
+	uint64_t start_y = segment_idy * cells_per_thread;
+
+	if (start_x >= width || start_y >= height) {
+		return;
+	}
+
+	unsigned int checksum = 0;
+
+	for (uint64_t i = start_x; i < start_x + cells_per_thread; ++i) {
+		for (uint64_t j = start_y; j < start_y + cells_per_thread; ++j) {
+			type val = surf2Dread<type>(array, i * sizeof(type), j);
+			checksum += (unsigned int)val;
+		}
+	}
+
+	if (checksum > 0 && start_x == 0 && start_y == 0) {
+		points[0].first = checksum;
+	}
+}
+
 } // namespace gpu

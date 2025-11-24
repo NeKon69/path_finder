@@ -13,21 +13,6 @@
 #include "cuda_wrappers/surface.h"
 
 namespace gpu {
-struct device_array {
-	raw::cuda_wrappers::channel_format_description										format;
-	raw::cuda_wrappers::array															array;
-	raw::cuda_wrappers::resource_description<raw::cuda_wrappers::resource_types::array> description;
-	raw::cuda_wrappers::surface															surface;
-	device_array(std::shared_ptr<raw::cuda_wrappers::cuda_stream> stream, int width, int height)
-		: format(cudaChannelFormatKindUnsigned, 8 * sizeof(type)),
-		  array(stream, format, width, height) {
-		description.set_array(array.get());
-		surface.create(description);
-	}
-	raw::cuda_wrappers::array* operator->() {
-		return &array;
-	}
-};
 class path_finder {
 private:
 	std::shared_ptr<raw::cuda_wrappers::cuda_stream> stream;

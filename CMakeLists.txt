@@ -73,7 +73,7 @@ target_include_directories(cuda_wrappers
 target_link_libraries(${PROJECT_NAME} PRIVATE cuda_wrappers CUDA::cudart)
 
 if(CMAKE_EXPORT_COMPILE_COMMANDS)
-  add_custom_target(
+    add_custom_target(
     copy_compile_commands ALL
     COMMAND
       ${CMAKE_COMMAND} -E copy_if_different
@@ -82,3 +82,5 @@ if(CMAKE_EXPORT_COMPILE_COMMANDS)
     COMMENT "Copying
  compile_commands.json to source dir")
 endif()
+
+set_target_properties(path_finder PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

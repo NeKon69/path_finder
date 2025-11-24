@@ -1,12 +1,13 @@
 #include <gpu/noise/FastNoiseLiteCUDA.h>
 
+#include <chrono>
 #include <iostream>
 #include <queue>
 #include <random>
 #include <vector>
 
 #include "common.h"
-#include "gpu/path_finder.h"
+#include "gpu/path_finder_chunk.h"
 
 void find_shortest_path(std::vector<std::vector<type>>& mat, position start, position end) {
 	std::queue<position> q;
@@ -137,6 +138,21 @@ void print_mat_path(const std::vector<std::vector<type>>& mat, const std::vector
 	}
 }
 
+void check_matrix(std::vector<type>& mat) {
+	long long checksum		  = 0;
+	int		  obstacles_found = 0;
+
+	for (int y = 0; y < SIZE; ++y) {
+		for (int x = 0; x < SIZE; ++x) {
+			type val = mat[y * SIZE + x];
+
+			checksum += val;
+		}
+	}
+	std::cout << "Anti-optimize check: " << checksum << " obstacles: " << obstacles_found
+			  << std::endl;
+}
+
 int main() {
 	// We use (MAX_CURRENT - 1) as starting/ending positions, and (MAX_CURRENT - 2) as walls
 	std::vector	  mat(SIZE, std::vector<type>(SIZE, EMPTY));
@@ -148,6 +164,15 @@ int main() {
 	noise.SetCellularDistanceFunction(FastNoiseLite::CellularDistanceFunction_Euclidean);
 	noise.SetCellularJitter(0.25);
 	auto [start, end] = prepare_matrix(mat, noise);
+	std::vector<type> mat2(SIZE * SIZE, EMPTY);
+	for (int i = 0; i < mat2.size(); ++i) {
+		mat2[i] = rand();
+	}
+	auto st = std::chrono::high_resolution_clock::now();
+	check_matrix(mat2);
+	auto en = std::chrono::high_resolution_clock::now();
+	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(en - st).count() << "us\n";
+
 	// auto [start, end] = std::pair(position {0, 0}, position {4, 4});
 	// auto beg = std::chrono::high_resolution_clock::now();
 	// find_shortest_path(mat, start, end);
@@ -159,8 +184,10 @@ int main() {
 	// mat[start.first][start.second] = TARGET;
 	// mat[end.first][end.second]	   = TARGET;
 	// prtype_matrix(mat);
-	gpu::path_finder path_finder(mat, start, end);
-	path_finder.find_path();
+	// gpu::path_finder_chunk path_finder(mat, start, end);
+
+	gpu::path_finder_chunk path_finder(mat, start, end);
+	path_finder.launch_test();
 
 	return 0;
 }

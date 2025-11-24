@@ -3,9 +3,11 @@
 //
 
 #include <chrono>
+#include <cstdint>
 #include <iostream>
 // @clang-format off
 #include <cuda_runtime.h>
+#include <cuda_runtime_api.h>
 // @clang-format on
 
 #include "cuda_wrappers/error.h"
@@ -38,4 +40,34 @@ void launch_path_finding(cudaSurfaceObject_t array, position* path, type width, 
 	rebuild_path_simple<<<1, 1, 0, stream>>>(array, path, points, path_length, width, height);
 }
 
+float launch_test_look(cudaSurfaceObject_t array, position* points, type width, type height,
+					   cudaEvent_t start, cudaEvent_t end, cudaStream_t stream) {
+	// Should be > 255, but also multiple of 32
+	constexpr uint32_t threads_per_dim = 32;
+	// Should be a multiple of 32
+	constexpr uint32_t threads_per_axis = 4;
+	constexpr uint32_t cells_for_thread = threads_per_axis * threads_per_axis;
+
+	uint64_t num_cells		  = width * height;
+	uint64_t threads_needed_x = width / threads_per_axis;
+	uint64_t threads_needed_y = height / threads_per_axis;
+	dim3	 block			  = dim3(threads_per_dim, threads_per_dim);
+	dim3	 grid;
+	grid.x = (threads_needed_x + block.x - 1) / block.x;
+	grid.y = (threads_needed_y + block.y - 1) / block.y;
+
+	CUDA_SAFE_CALL(cudaEventRecord(start, stream));
+	check_full_array<<<grid, block, 0, stream>>>(array, points, width, height, threads_per_axis);
+	if (cudaError_t err = cudaGetLastError(); err != cudaSuccess) {
+		std::cerr << "Error in check_full_array: " << cudaGetErrorString(err) << std::endl;
+		throw std::runtime_error("Error in check_full_array");
+	}
+
+	CUDA_SAFE_CALL(cudaEventRecord(end, stream));
+
+	float milliseconds = 0;
+	CUDA_SAFE_CALL(cudaEventSynchronize(end));
+	CUDA_SAFE_CALL(cudaEventElapsedTime(&milliseconds, start, end));
+	return milliseconds;
+}
 } // namespace gpu

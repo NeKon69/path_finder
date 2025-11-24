@@ -2,6 +2,10 @@
 // Created by progamers on 9/25/25.
 //
 #pragma once
+#include <cuda_wrappers/array.h>
+#include <cuda_wrappers/channel_format_description.h>
+#include <cuda_wrappers/surface.h>
+
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -34,7 +38,8 @@ inline constexpr type TARGET = MAX_CURRENT - 2;
 inline constexpr type EMPTY	 = MAX_CURRENT - 3;
 static_assert(EMPTY < TARGET && TARGET < WALL && EMPTY > MAX_CURRENT / 2,
 			  "THIS IS NECESSARY FOR THE GPU WAVEFRONT TO WORK, DON'T CHANGE THAT!!!");
-inline constexpr type SIZE = 200;
+// should be a multiple of 32
+inline constexpr type SIZE = 16384;
 inline constexpr type SEED = 1234;
 
 CONSTANT_MEM static inline constexpr int dr[] = {-1, 1, 0, 0};
@@ -49,7 +54,7 @@ inline bool DEVICE_HOST inside_bounds(type row, type col) {
 inline bool DEVICE_HOST is_target(type val) {
 	return val == TARGET || val == EMPTY;
 }
-inline bool DEVICE_HOST  is_marked(type val) {
+inline bool DEVICE_HOST is_marked(type val) {
 	return val > 0 && val < EMPTY;
 }
 DEVICE_HOST inline bool is_real_target(type val) {
@@ -69,3 +74,19 @@ DEVICE inline type min(type a, type b, type c, type d) {
 	}
 	return min;
 }
+
+struct device_array {
+	raw::cuda_wrappers::channel_format_description										format;
+	raw::cuda_wrappers::array															array;
+	raw::cuda_wrappers::resource_description<raw::cuda_wrappers::resource_types::array> description;
+	raw::cuda_wrappers::surface															surface;
+	device_array(std::shared_ptr<raw::cuda_wrappers::cuda_stream> stream, int width, int height)
+		: format(cudaChannelFormatKindUnsigned, 8 * sizeof(type)),
+		  array(stream, format, width, height) {
+		description.set_array(array.get());
+		surface.create(description);
+	}
+	raw::cuda_wrappers::array* operator->() {
+		return &array;
+	}
+};
