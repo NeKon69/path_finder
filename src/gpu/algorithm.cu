@@ -57,7 +57,8 @@ float launch_test_look(cudaSurfaceObject_t array, position* points, type width, 
 	grid.y = (threads_needed_y + block.y - 1) / block.y;
 
 	CUDA_SAFE_CALL(cudaEventRecord(start, stream));
-	check_full_array<<<grid, block, 0, stream>>>(array, points, width, height, threads_per_axis);
+	check_full_array<<<grid, block, 0, stream>>>(array, points, width, height,
+												 type(threads_per_axis));
 	if (cudaError_t err = cudaGetLastError(); err != cudaSuccess) {
 		std::cerr << "Error in check_full_array: " << cudaGetErrorString(err) << std::endl;
 		throw std::runtime_error("Error in check_full_array");
@@ -70,4 +71,31 @@ float launch_test_look(cudaSurfaceObject_t array, position* points, type width, 
 	CUDA_SAFE_CALL(cudaEventElapsedTime(&milliseconds, start, end));
 	return milliseconds;
 }
+
+float launch_queue_pf(type* array, type* q1, type* q2, type* q1_cnt, type* q2_cnt, type width,
+					  type height, position start, position end, type* finished_flag,
+					  cudaEvent_t start_event, cudaEvent_t end_event, cudaStream_t stream) {
+	int deviceId = 0;
+	cudaGetDevice(&deviceId);
+	cudaDeviceProp props;
+	cudaGetDeviceProperties(&props, deviceId);
+	int numBlocksPerSm = 0;
+	int numThreads	   = 1024;
+	CUDA_SAFE_CALL(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, find_path_queue,
+																 numThreads, 0));
+	int numBlocks = numBlocksPerSm * props.multiProcessorCount;
+	printf("Launch Config: %d Blocks, %d Threads \n", numBlocks, numThreads);
+
+	void* kernelArgs[] = {&array, &q1,	   &q2,	   &q1_cnt, &q2_cnt,
+						  &width, &height, &start, &end,	&finished_flag};
+	CUDA_SAFE_CALL(cudaEventRecord(start_event));
+	CUDA_SAFE_CALL(
+		cudaLaunchCooperativeKernel(find_path_queue, numBlocks, numThreads, kernelArgs, 0, stream));
+	CUDA_SAFE_CALL(cudaEventRecord(end_event));
+	float milliseconds = 0;
+	CUDA_SAFE_CALL(cudaEventSynchronize(end_event));
+	CUDA_SAFE_CALL(cudaEventElapsedTime(&milliseconds, start_event, end_event));
+	return milliseconds;
+}
+
 } // namespace gpu

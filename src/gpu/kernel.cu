@@ -2,6 +2,7 @@
 // Created by progamers on 9/25/25.
 //
 #include <cooperative_groups.h>
+#include <cuda/std/__type_traits/is_swappable.h>
 #include <device_atomic_functions.h>
 #include <surface_indirect_functions.h>
 #include <surface_types.h>
@@ -146,13 +147,12 @@ __global__ void find_path_chunk(cudaSurfaceObject_t array, position* points, typ
 	}
 }
 
-namespace cg	 = cooperative_groups;
-auto& count_ones = __popc;
-auto& act_warp	 = __activemask;
+namespace cg			  = cooperative_groups;
+__device__ auto& act_warp = __activemask;
 template<typename T>
-inline constexpr T (&give_values)(T mask, T offset, T width) = __shfl_sync;
-constexpr __constant__ short dx[4]							 = {0, 0, -1, 1};
-constexpr __constant__ short dy[4]							 = {1, -1, 0, 0};
+__device__ inline constexpr T (&give_values)(T mask, T offset, T width) = __shfl_sync;
+constexpr __constant__ short dx[4]										= {0, 0, -1, 1};
+constexpr __constant__ short dy[4]										= {1, -1, 0, 0};
 
 __device__ inline void append_to_queue(position pos, type* q, type* q_cnt, type width) {
 	// returns what threads are currently active (means barnced on checking if the cell was changed)
@@ -165,13 +165,13 @@ __device__ inline void append_to_queue(position pos, type* q, type* q_cnt, type 
 	// So in general it just turns all bits behind current thread in warp to 1
 	uint32_t warp_mask = (1U << warp_tid) - 1;
 	// Returns threads that are active AND behind us
-	uint32_t rank = count_ones(active_threads & warp_mask);
+	uint32_t rank = __popc(active_threads & warp_mask);
 
 	uint32_t warp_base_offset = 0;
 	uint32_t leader_tid		  = __ffs(active_threads) - 1;
 	if (warp_tid == leader_tid) {
 		// Count how many threads are active
-		uint32_t total_warp_add = count_ones(active_threads);
+		uint32_t total_warp_add = __popc(active_threads);
 		if (total_warp_add) {
 			// Atomically add this amount
 			warp_base_offset = atomicAdd(q_cnt, total_warp_add);
@@ -194,11 +194,14 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 	int			   cells_cnt	 = width * height;
 
 	if (t_id == 0) {
-		*q1_cnt							 = 0;
-		*q2_cnt							 = 0;
-		*finished_flag					 = 0;
-		q1[0]							 = start.x + start.y * width;
-		*q1_cnt							 = 1;
+		printf("DEBUG: Kernel started. Start: [%u, %u], End: [%u, %u]\n", start.x, start.y, end.x,
+			   end.y);
+		*q1_cnt		   = 0;
+		*q2_cnt		   = 0;
+		*finished_flag = 0;
+		q1[0]		   = start.x + start.y * width;
+		*q1_cnt		   = 1;
+
 		array[start.x + start.y * width] = 1;
 	}
 
@@ -211,7 +214,7 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 
 	type depth = 0;
 
-	while (*finished_flag != 1 && *curr_q_cnt > 0) {
+	while (*finished_flag != 1 || *curr_q_cnt > 0) {
 		int curr_q_size = *curr_q_cnt;
 
 		for (int i = t_id; i < curr_q_size; i += total_threads) {
@@ -226,7 +229,8 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 			for (int i = 0; i < 4; ++i) {
 				position next = {curr_pos.x + dx[i], curr_pos.y + dy[i]};
 
-				if (next >= position {0, 0} && next < position {width, height}) {
+				if (next >= position {0, 0} && next < position {width, height} &&
+					next.x != UINT32_MAX && next.y != UINT32_MAX) {
 					if (__ldg(&array[next.x + next.y * width]) == EMPTY) {
 						if (atomicCAS(&array[next.x + next.y * width], EMPTY, depth) == EMPTY) {
 							append_to_queue(next, next_q, next_q_cnt, width);
@@ -241,9 +245,13 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 			*curr_q_cnt = 0;
 		}
 		grid.sync();
-		std::swap(curr_q, next_q);
-		std::swap(curr_q_cnt, next_q_cnt);
+		using cuda::std::swap;
+		swap(curr_q, next_q);
+		swap(curr_q_cnt, next_q_cnt);
 		depth++;
+	}
+	if (t_id == 0) {
+		printf("DEBUG: Kernel finished. Depth: %u\n", depth);
 	}
 }
 } // namespace gpu

@@ -6,7 +6,6 @@
 #include <cuda_wrappers/channel_format_description.h>
 #include <cuda_wrappers/surface.h>
 
-#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -25,13 +24,23 @@ inline constexpr auto MAX_CURRENT = UINT32_MAX;
 using type = uint32_t;
 
 struct position {
-	type					   x, y;
-	DEVICE_HOST constexpr auto operator<=>(const position& other) const = default;
+	type					 x, y;
+	auto DEVICE_HOST		 operator<=>(const position& other) const = default;
+	bool DEVICE_HOST		 operator==(const position& other) const  = default;
+	__host__ __device__ bool operator<(const position& other) const {
+		if (x != other.x)
+			return x < other.x;
+		return y < other.y;
+	}
+
+	__host__ __device__ bool operator>=(const position& other) const {
+		return !(*this < other);
+	}
 };
 
 using matrix = std::vector<std::vector<type>>;
 
-inline constexpr float THRESHOLD = 0.4f;
+inline constexpr float THRESHOLD = 0.2f;
 // Don't change this to lower values!!! or my gpu logic is screwed
 inline constexpr type WALL		= MAX_CURRENT - 1;
 inline constexpr type TARGET	= MAX_CURRENT - 2;
@@ -40,7 +49,7 @@ inline constexpr type UNCHECKED = MAX_CURRENT - 4;
 static_assert(EMPTY < TARGET && TARGET < WALL && EMPTY > MAX_CURRENT / 2,
 			  "THIS IS NECESSARY FOR THE GPU WAVEFRONT TO WORK, DON'T CHANGE THAT!!!");
 // should be a multiple of 32
-inline constexpr type SIZE = 16384;
+inline constexpr type SIZE = 128;
 inline constexpr type SEED = 1234;
 
 CONSTANT_MEM static inline constexpr int dr[] = {-1, 1, 0, 0};
