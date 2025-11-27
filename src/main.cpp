@@ -12,7 +12,7 @@
 void find_shortest_path(std::vector<std::vector<type>>& mat, position start, position end) {
 	std::queue<position> q;
 	q.push(start);
-	mat[start.first][start.second] = 1;
+	mat[start.x][start.y] = 1;
 
 	while (!q.empty()) {
 		position curr = q.front();
@@ -23,11 +23,11 @@ void find_shortest_path(std::vector<std::vector<type>>& mat, position start, pos
 		}
 
 		for (int i = 0; i < 4; ++i) {
-			type next_row = curr.first + dr[i];
-			type next_col = curr.second + dc[i];
+			type next_row = curr.x + dr[i];
+			type next_col = curr.y + dc[i];
 
 			if (inside_bounds(next_row, next_col) && is_target(mat[next_row][next_col])) {
-				mat[next_row][next_col] = mat[curr.first][curr.second] + 1;
+				mat[next_row][next_col] = mat[curr.x][curr.y] + 1;
 				q.emplace(next_row, next_col);
 			}
 		}
@@ -38,12 +38,12 @@ void reconstruct_the_path(std::vector<std::vector<type>>& mat, position end) {
 	position			  curr = end;
 	std::vector<position> path;
 	path.reserve(SIZE);
-	while (mat[curr.first][curr.second] != 1) {
-		type min = mat[curr.first][curr.second];
+	while (mat[curr.x][curr.y] != 1) {
+		type min = mat[curr.x][curr.y];
 
 		for (int i = 0; i < 4; ++i) {
-			type next_row = curr.first + dr[i];
-			type next_col = curr.second + dc[i];
+			type next_row = curr.x + dr[i];
+			type next_col = curr.y + dc[i];
 			type val	  = mat[next_row][next_col];
 			if (inside_bounds(next_row, next_col) && is_path(val) && min - 1 == val) {
 				min	 = val;
@@ -164,30 +164,36 @@ int main() {
 	noise.SetCellularDistanceFunction(FastNoiseLite::CellularDistanceFunction_Euclidean);
 	noise.SetCellularJitter(0.25);
 	auto [start, end] = prepare_matrix(mat, noise);
-	std::vector<type> mat2(SIZE * SIZE, EMPTY);
-	for (int i = 0; i < mat2.size(); ++i) {
-		mat2[i] = rand();
-	}
-	auto st = std::chrono::high_resolution_clock::now();
-	check_matrix(mat2);
-	auto en = std::chrono::high_resolution_clock::now();
-	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(en - st).count() << "us\n";
-
-	// auto [start, end] = std::pair(position {0, 0}, position {4, 4});
-	// auto beg = std::chrono::high_resolution_clock::now();
-	// find_shortest_path(mat, start, end);
-	// reconstruct_the_path(mat, end);
-	// auto endi = std::chrono::high_resolution_clock::now();
-	// std::cout << std::chrono::duration_cast<std::chrono::microseconds>(endi - beg).count()
-	// << "us\n";
-
-	// mat[start.first][start.second] = TARGET;
-	// mat[end.first][end.second]	   = TARGET;
-	// prtype_matrix(mat);
-	// gpu::path_finder_chunk path_finder(mat, start, end);
-
-	gpu::path_finder_chunk path_finder(mat, start, end);
-	path_finder.launch_test();
-
-	return 0;
+	auto st			  = std::chrono::high_resolution_clock::now();
+	find_shortest_path(mat, start, end);
+	auto endi = std::chrono::high_resolution_clock::now();
+	std::cout << std::chrono::duration_cast<std::chrono::micr.ys>(endi - st).count();
+	//
+	// 	std::vector<type> mat2(SIZE * SIZE, EMPTY);
+	// 	for (int i = 0; i < mat2.size(); ++i) {
+	// 		mat2[i] = rand();
+	// 	}
+	//
+	// 	check_matrix(mat2);
+	// 	auto en = std::chrono::high_resolution_clock::now();
+	// 	std::cout << std::chrono::duration_cast<std::chrono::micr.ys>(en - st).count() <<
+	// "us\n";
+	//
+	// 	// auto [start, end] = std::pair(position {0, 0}, position {4, 4});
+	// 	//
+	// 	// find_shortest_path(mat, start, end);
+	// 	// reconstruct_the_path(mat, end);
+	// 	//
+	// 	//
+	// 	// << "us\n";
+	//
+	// 	// mat[start.x][start.y] = TARGET;
+	// 	// mat[end.x][end.y]	   = TARGET;
+	// 	// prtype_matrix(mat);
+	// 	// gpu::path_finder_chunk path_finder(mat, start, end);
+	//
+	// 	gpu::path_finder_chunk path_finder(mat, start, end);
+	// 	path_finder.launch_test();
+	//
+	// 	return 0;
 }

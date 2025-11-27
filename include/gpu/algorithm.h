@@ -8,8 +8,6 @@
 #include <driver_types.h>
 #include <surface_types.h>
 
-#include <cstdint>
-
 #include "common.h"
 namespace gpu {
 extern void	 launch_path_finding(cudaSurfaceObject_t array, position* path, type width, type height,

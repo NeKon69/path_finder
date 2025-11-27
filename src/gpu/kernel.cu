@@ -2,7 +2,13 @@
 // Created by progamers on 9/25/25.
 //
 #include <cooperative_groups.h>
+#include <device_atomic_functions.h>
+#include <surface_indirect_functions.h>
+#include <surface_types.h>
 
+#include <cstdint>
+
+#include "common.h"
 #include "gpu/kernel.h"
 namespace gpu {
 __global__ void simple_path_finding(cudaSurfaceObject_t array, position* start, type width,
@@ -81,10 +87,10 @@ __global__ void rebuild_path_simple(cudaSurfaceObject_t array, position* path, p
 
 		for (type i = 1; i < path_len; ++i) {
 			type current_value =
-				surf2Dread<type>(array, current_pos.first * sizeof(type), current_pos.second);
+				surf2Dread<type>(array, current_pos.x * sizeof(type), current_pos.y);
 			for (int j = 0; j < 4; ++j) {
-				type next_x = current_pos.first + dc[j];
-				type next_y = current_pos.second + dr[j];
+				type next_x = current_pos.x + dc[j];
+				type next_y = current_pos.y + dr[j];
 				type val;
 				if (inside_bounds(next_y, next_x) &&
 					((val = surf2Dread<type>(array, next_x * sizeof(type), next_y))) &&
@@ -94,7 +100,7 @@ __global__ void rebuild_path_simple(cudaSurfaceObject_t array, position* path, p
 					break;
 				}
 			}
-			path[i] = {current_pos.first, current_pos.second};
+			path[i] = {current_pos.x, current_pos.y};
 		}
 	}
 }
@@ -106,7 +112,6 @@ __global__ void check_full_array(cudaSurfaceObject_t array, position* points, ty
 
 	uint64_t start_x = segment_idx * cells_per_thread;
 	uint64_t start_y = segment_idy * cells_per_thread;
-
 	if (start_x >= width || start_y >= height) {
 		return;
 	}
@@ -121,8 +126,124 @@ __global__ void check_full_array(cudaSurfaceObject_t array, position* points, ty
 	}
 
 	if (checksum > 0 && start_x == 0 && start_y == 0) {
-		points[0].first = checksum;
+		points[0].x = checksum;
+	}
+}
+__global__ void find_path_chunk(cudaSurfaceObject_t array, position* points, type width,
+								type height, type* global_done_flag, type cells_per_thread) {
+	// Has the size of maximum size of 1024, so lets allocate max
+	__shared__ type chunk_mem[1024];
+
+	// Calculates chunk id
+	uint64_t segment_idx = threadIdx.x + blockIdx.x * blockDim.x;
+	uint64_t segment_idy = threadIdx.y + blockIdx.y * blockDim.y;
+
+	// Calculates start position relative to all chnuks
+	uint64_t start_x = segment_idx * cells_per_thread;
+	uint64_t start_y = segment_idy * cells_per_thread;
+
+	for (int i = 0; i < cells_per_thread; ++i) {
 	}
 }
 
+namespace cg	 = cooperative_groups;
+auto& count_ones = __popc;
+auto& act_warp	 = __activemask;
+template<typename T>
+inline constexpr T (&give_values)(T mask, T offset, T width) = __shfl_sync;
+constexpr __constant__ short dx[4]							 = {0, 0, -1, 1};
+constexpr __constant__ short dy[4]							 = {1, -1, 0, 0};
+
+__device__ inline void append_to_queue(position pos, type* q, type* q_cnt, type width) {
+	// returns what threads are currently active (means barnced on checking if the cell was changed)
+	uint32_t active_threads = act_warp();
+	uint32_t warp_tid		= threadIdx.x % 32;
+
+	// Produces result like this
+	// Let's say our thread in warp is third
+	// then in here it would turn into ...0011
+	// So in general it just turns all bits behind current thread in warp to 1
+	uint32_t warp_mask = (1U << warp_tid) - 1;
+	// Returns threads that are active AND behind us
+	uint32_t rank = count_ones(active_threads & warp_mask);
+
+	uint32_t warp_base_offset = 0;
+	uint32_t leader_tid		  = __ffs(active_threads) - 1;
+	if (warp_tid == leader_tid) {
+		// Count how many threads are active
+		uint32_t total_warp_add = count_ones(active_threads);
+		if (total_warp_add) {
+			// Atomically add this amount
+			warp_base_offset = atomicAdd(q_cnt, total_warp_add);
+		}
+	}
+	// Distribute warp_base_offset accross all threads in warp
+	warp_base_offset = __shfl_sync(active_threads, warp_base_offset, leader_tid);
+
+	uint32_t curr_offset = warp_base_offset + rank;
+	// Pack 2d coordinates to 1d
+	q[curr_offset] = pos.x + width * pos.y;
+}
+
+__global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, type* q2_cnt,
+								type width, type height, position start, position end,
+								volatile type* finished_flag) {
+	cg::grid_group grid			 = cg::this_grid();
+	int			   t_id			 = grid.thread_rank();
+	int			   total_threads = grid.size();
+	int			   cells_cnt	 = width * height;
+
+	if (t_id == 0) {
+		*q1_cnt							 = 0;
+		*q2_cnt							 = 0;
+		*finished_flag					 = 0;
+		q1[0]							 = start.x + start.y * width;
+		*q1_cnt							 = 1;
+		array[start.x + start.y * width] = 1;
+	}
+
+	grid.sync();
+
+	type* curr_q	 = q1;
+	type* next_q	 = q2;
+	type* curr_q_cnt = q1_cnt;
+	type* next_q_cnt = q2_cnt;
+
+	type depth = 0;
+
+	while (*finished_flag != 1 && *curr_q_cnt > 0) {
+		int curr_q_size = *curr_q_cnt;
+
+		for (int i = t_id; i < curr_q_size; i += total_threads) {
+			type	 curr_node = curr_q[i];
+			position curr_pos  = {curr_node % width, curr_node / width};
+
+			if (curr_pos == end) {
+				*finished_flag = 1;
+			}
+
+#pragma unroll
+			for (int i = 0; i < 4; ++i) {
+				position next = {curr_pos.x + dx[i], curr_pos.y + dy[i]};
+
+				if (next >= position {0, 0} && next < position {width, height}) {
+					if (__ldg(&array[next.x + next.y * width]) == EMPTY) {
+						if (atomicCAS(&array[next.x + next.y * width], EMPTY, depth) == EMPTY) {
+							append_to_queue(next, next_q, next_q_cnt, width);
+						}
+					}
+				}
+			}
+		}
+
+		grid.sync();
+		if (!t_id) {
+			*curr_q_cnt = 0;
+		}
+		grid.sync();
+		std::swap(curr_q, next_q);
+		std::swap(curr_q_cnt, next_q_cnt);
+		depth++;
+	}
+}
 } // namespace gpu

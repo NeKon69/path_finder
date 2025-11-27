@@ -32,8 +32,8 @@ public:
 		  path_length(sizeof(type), stream),
 		  points(sizeof(position) * 2, stream),
 		  array(stream, matrix_[0].size(), matrix_.size()),
-		  start(start_.second, start_.first),
-		  end(end_.second, end_.first),
+		  start(start_.y, start_.x),
+		  end(end_.y, end_.x),
 		  width(matrix_[0].size()),
 		  height(matrix_.size()) {
 		{

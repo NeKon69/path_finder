@@ -25,7 +25,7 @@ inline constexpr auto MAX_CURRENT = UINT32_MAX;
 using type = uint32_t;
 
 struct position {
-	type					   first, second;
+	type					   x, y;
 	DEVICE_HOST constexpr auto operator<=>(const position& other) const = default;
 };
 
@@ -33,9 +33,10 @@ using matrix = std::vector<std::vector<type>>;
 
 inline constexpr float THRESHOLD = 0.4f;
 // Don't change this to lower values!!! or my gpu logic is screwed
-inline constexpr type WALL	 = MAX_CURRENT - 1;
-inline constexpr type TARGET = MAX_CURRENT - 2;
-inline constexpr type EMPTY	 = MAX_CURRENT - 3;
+inline constexpr type WALL		= MAX_CURRENT - 1;
+inline constexpr type TARGET	= MAX_CURRENT - 2;
+inline constexpr type EMPTY		= MAX_CURRENT - 3;
+inline constexpr type UNCHECKED = MAX_CURRENT - 4;
 static_assert(EMPTY < TARGET && TARGET < WALL && EMPTY > MAX_CURRENT / 2,
 			  "THIS IS NECESSARY FOR THE GPU WAVEFRONT TO WORK, DON'T CHANGE THAT!!!");
 // should be a multiple of 32
