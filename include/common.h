@@ -10,6 +10,7 @@
 #include <vector>
 
 inline constexpr auto MAX_CURRENT = UINT32_MAX;
+static_assert(MAX_CURRENT == 4294967295, "MAX_CURRENT must be a multiple of 32");
 
 #ifdef __CUDACC__
 #define DEVICE_HOST __device__ __host__
@@ -40,7 +41,7 @@ struct position {
 
 using matrix = std::vector<std::vector<type>>;
 
-inline constexpr float THRESHOLD = 0.2f;
+inline constexpr float THRESHOLD = 0.8f;
 // Don't change this to lower values!!! or my gpu logic is screwed
 inline constexpr type WALL		= MAX_CURRENT - 1;
 inline constexpr type TARGET	= MAX_CURRENT - 2;
@@ -49,7 +50,7 @@ inline constexpr type UNCHECKED = MAX_CURRENT - 4;
 static_assert(EMPTY < TARGET && TARGET < WALL && EMPTY > MAX_CURRENT / 2,
 			  "THIS IS NECESSARY FOR THE GPU WAVEFRONT TO WORK, DON'T CHANGE THAT!!!");
 // should be a multiple of 32
-inline constexpr type SIZE = 128;
+inline constexpr type SIZE = 32;
 inline constexpr type SEED = 1234;
 
 CONSTANT_MEM static inline constexpr int dr[] = {-1, 1, 0, 0};

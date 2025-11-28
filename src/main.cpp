@@ -92,9 +92,6 @@ std::pair<position, position> prepare_matrix(std::vector<std::vector<type>>& mat
 				mat[row][col] = EMPTY;
 		}
 	}
-	mat[row1][col1] = EMPTY;
-	mat[row2][col2] = EMPTY;
-
 	return {{row1, col1}, {row2, col2}};
 }
 void prtype_matrix(const std::vector<std::vector<type>>& mat) {
@@ -167,22 +164,14 @@ int main() {
 	noise.SetCellularDistanceFunction(FastNoiseLite::CellularDistanceFunction_Euclidean);
 	noise.SetCellularJitter(0.25);
 	auto [start, end] = prepare_matrix(mat, noise);
-	std::cout << "Clearing obstacles around Start " << start.x << "," << start.y << " and End "
-			  << end.x << "," << end.y << std::endl;
-
-	// Принудительно очищаем зону 3x3 вокруг старта и финиша, чтобы алгоритм мог начать работу
-	for (int i = -1; i <= 1; ++i) {
-		for (int j = -1; j <= 1; ++j) {
-			if (inside_bounds(start.x + i, start.y + j)) {
-				mat[start.x + i][start.y + j] = EMPTY;
-			}
-			if (inside_bounds(end.x + i, end.y + j)) {
-				mat[end.x + i][end.y + j] = EMPTY;
-			}
-		}
-	}
+	prtype_matrix(mat);
 	gpu::path_finder_queue pfq(mat, start, end);
-	pfq.find_path();
+
+	auto path = pfq.find_path();
+	for (const auto& pos : path) {
+		mat[pos.x][pos.y] = 1;
+	}
+	prtype_matrix(mat);
 
 	//
 	// 	std::vector<type> mat2(SIZE * SIZE, EMPTY);

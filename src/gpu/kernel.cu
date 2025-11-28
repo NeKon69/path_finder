@@ -2,7 +2,6 @@
 // Created by progamers on 9/25/25.
 //
 #include <cooperative_groups.h>
-#include <cuda/std/__type_traits/is_swappable.h>
 #include <device_atomic_functions.h>
 #include <surface_indirect_functions.h>
 #include <surface_types.h>
@@ -106,6 +105,37 @@ __global__ void rebuild_path_simple(cudaSurfaceObject_t array, position* path, p
 	}
 }
 
+// __global__ void rebuild_path_simple(const type* __restrict__ array, position* path,
+// 									position* points, type* path_length, type width, type height) {
+// 	if (blockIdx.x == 0 && threadIdx.x == 0) {
+// 		type path_len = *path_length;
+// 		if (path_len == 0) {
+// 			return;
+// 		}
+//
+// 		position current_pos = points[1];
+// 		path[0]				 = current_pos;
+//
+// 		for (type i = 1; i < path_len; ++i) {
+// 			type current_value =
+// 				surf2Dread<type>(array, current_pos.x * sizeof(type), current_pos.y);
+// 			for (int j = 0; j < 4; ++j) {
+// 				type next_x = current_pos.x + dc[j];
+// 				type next_y = current_pos.y + dr[j];
+// 				type val;
+// 				if (inside_bounds(next_y, next_x) &&
+// 					((val = surf2Dread<type>(array, next_x * sizeof(type), next_y))) &&
+// 					is_path(val) && current_value - 1 == val) {
+// 					current_value = val;
+// 					current_pos	  = {next_x, next_y};
+// 					break;
+// 				}
+// 			}
+// 			path[i] = {current_pos.x, current_pos.y};
+// 		}
+// 	}
+// }
+
 __global__ void check_full_array(cudaSurfaceObject_t array, position* points, type width,
 								 type height, type cells_per_thread) {
 	uint64_t segment_idx = threadIdx.x + blockIdx.x * blockDim.x;
@@ -147,12 +177,10 @@ __global__ void find_path_chunk(cudaSurfaceObject_t array, position* points, typ
 	}
 }
 
-namespace cg			  = cooperative_groups;
-__device__ auto& act_warp = __activemask;
-template<typename T>
-__device__ inline constexpr T (&give_values)(T mask, T offset, T width) = __shfl_sync;
-constexpr __constant__ short dx[4]										= {0, 0, -1, 1};
-constexpr __constant__ short dy[4]										= {1, -1, 0, 0};
+namespace cg						  = cooperative_groups;
+__device__ auto&			 act_warp = __activemask;
+constexpr __constant__ short dx[4]	  = {0, 0, -1, 1};
+constexpr __constant__ short dy[4]	  = {1, -1, 0, 0};
 
 __device__ inline void append_to_queue(position pos, type* q, type* q_cnt, type width) {
 	// returns what threads are currently active (means barnced on checking if the cell was changed)
@@ -185,24 +213,37 @@ __device__ inline void append_to_queue(position pos, type* q, type* q_cnt, type 
 	q[curr_offset] = pos.x + width * pos.y;
 }
 
+__device__ unsigned int atomicLoad(const unsigned int* addr) {
+	const volatile unsigned int* vaddr = addr; // volatile to bypass cache
+	__threadfence();						   // for seq_cst loads. Remove for acquire semantics.
+	const unsigned int value = *vaddr;
+	// fence to ensure that dependent reads are correctly ordered
+	__threadfence();
+	return value;
+}
+
+// addr must be aligned properly.
+__device__ void atomicStore(unsigned int* addr, unsigned int value) {
+	volatile unsigned int* vaddr = addr; // volatile to bypass cache
+	// fence to ensure that previous non-atomic stores are visible to other threads
+	__threadfence();
+	*vaddr = value;
+}
+
 __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, type* q2_cnt,
 								type width, type height, position start, position end,
 								volatile type* finished_flag) {
 	cg::grid_group grid			 = cg::this_grid();
-	int			   t_id			 = grid.thread_rank();
-	int			   total_threads = grid.size();
-	int			   cells_cnt	 = width * height;
+	uint32_t	   t_id			 = grid.thread_rank();
+	uint32_t	   total_threads = grid.size();
 
 	if (t_id == 0) {
-		printf("DEBUG: Kernel started. Start: [%u, %u], End: [%u, %u]\n", start.x, start.y, end.x,
-			   end.y);
-		*q1_cnt		   = 0;
-		*q2_cnt		   = 0;
-		*finished_flag = 0;
-		q1[0]		   = start.x + start.y * width;
-		*q1_cnt		   = 1;
-
-		array[start.x + start.y * width] = 1;
+		*q2_cnt							 = 0;
+		*finished_flag					 = 0;
+		q1[0]							 = start.x + start.y * width;
+		*q1_cnt							 = 1;
+		array[start.x + start.y * width] = 0;
+		array[end.x + end.y * width]	 = EMPTY;
 	}
 
 	grid.sync();
@@ -211,10 +252,9 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 	type* next_q	 = q2;
 	type* curr_q_cnt = q1_cnt;
 	type* next_q_cnt = q2_cnt;
+	type  depth		 = 1;
 
-	type depth = 0;
-
-	while (*finished_flag != 1 || *curr_q_cnt > 0) {
+	while (true) {
 		int curr_q_size = *curr_q_cnt;
 
 		for (int i = t_id; i < curr_q_size; i += total_threads) {
@@ -222,13 +262,15 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 			position curr_pos  = {curr_node % width, curr_node / width};
 
 			if (curr_pos == end) {
-				*finished_flag = 1;
+				atomicAdd((unsigned int*)finished_flag, 1);
+				__threadfence();
+				printf("Path found with depth=%u in thread=%u, x=%u, y=%u\n", depth, t_id,
+					   curr_pos.x, curr_pos.y);
 			}
 
 #pragma unroll
 			for (int i = 0; i < 4; ++i) {
 				position next = {curr_pos.x + dx[i], curr_pos.y + dy[i]};
-
 				if (next >= position {0, 0} && next < position {width, height} &&
 					next.x != UINT32_MAX && next.y != UINT32_MAX) {
 					if (__ldg(&array[next.x + next.y * width]) == EMPTY) {
@@ -241,17 +283,32 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 		}
 
 		grid.sync();
-		if (!t_id) {
+		unsigned int flag_val	  = atomicLoad((unsigned int*)finished_flag);
+		unsigned int next_cnt_val = atomicLoad((unsigned int*)next_q_cnt);
+
+		bool should_exit = (flag_val > 0) || (next_cnt_val == 0);
+
+		if (should_exit) {
+			if (threadIdx.x % 32 == 0) {
+				printf("Exiting (warp %u/%u), step=%u\n", t_id / 32, total_threads / 32, depth);
+			}
+			break;
+		}
+
+		if (t_id == 0) {
 			*curr_q_cnt = 0;
 		}
+
+		if (threadIdx.x % 32 == 0) {
+			printf("warp %u/%u, step=%u, waiting for others...\n", t_id / 32, total_threads / 32,
+				   depth);
+		}
+
 		grid.sync();
 		using cuda::std::swap;
 		swap(curr_q, next_q);
 		swap(curr_q_cnt, next_q_cnt);
 		depth++;
-	}
-	if (t_id == 0) {
-		printf("DEBUG: Kernel finished. Depth: %u\n", depth);
 	}
 }
 } // namespace gpu

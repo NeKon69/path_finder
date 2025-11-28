@@ -10,6 +10,7 @@
 #include <cuda_runtime_api.h>
 // @clang-format on
 
+#include "cpu/path_rebuilder.h"
 #include "cuda_wrappers/error.h"
 #include "gpu/algorithm.h"
 #include "gpu/kernel.h"
@@ -72,9 +73,11 @@ float launch_test_look(cudaSurfaceObject_t array, position* points, type width, 
 	return milliseconds;
 }
 
-float launch_queue_pf(type* array, type* q1, type* q2, type* q1_cnt, type* q2_cnt, type width,
-					  type height, position start, position end, type* finished_flag,
-					  cudaEvent_t start_event, cudaEvent_t end_event, cudaStream_t stream) {
+std::tuple<std::vector<position>, float> launch_queue_pf(
+	type* array, type* q1, type* q2, type* q1_cnt, type* q2_cnt, type width, type height,
+	position start, position end, type* finished_flag, cudaEvent_t start_event,
+	cudaEvent_t end_event, cudaStream_t stream) {
+	printf("Start is at (%u, %u), end is at (%u, %u)\n", start.x, start.y, end.x, end.y);
 	int deviceId = 0;
 	cudaGetDevice(&deviceId);
 	cudaDeviceProp props;
@@ -92,10 +95,20 @@ float launch_queue_pf(type* array, type* q1, type* q2, type* q1_cnt, type* q2_cn
 	CUDA_SAFE_CALL(
 		cudaLaunchCooperativeKernel(find_path_queue, numBlocks, numThreads, kernelArgs, 0, stream));
 	CUDA_SAFE_CALL(cudaEventRecord(end_event));
-	float milliseconds = 0;
 	CUDA_SAFE_CALL(cudaEventSynchronize(end_event));
+
+	type* matrix;
+	CUDA_SAFE_CALL(cudaMallocHost(&matrix, width * height * sizeof(type)));
+
+	CUDA_SAFE_CALL(cudaMemcpyAsync(matrix, array, width * height * sizeof(type),
+								   cudaMemcpyDeviceToHost, stream));
+	CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
+	auto path = reconstruct_path_flat(matrix, width, height, end);
+	CUDA_SAFE_CALL(cudaFreeHost(matrix));
+
+	float milliseconds = 0;
 	CUDA_SAFE_CALL(cudaEventElapsedTime(&milliseconds, start_event, end_event));
-	return milliseconds;
+	return {path, milliseconds};
 }
 
 } // namespace gpu

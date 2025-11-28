@@ -55,12 +55,12 @@ public:
 		stream->sync();
 	}
 
-	void find_path() {
-		float time_spent = launch_queue_pf(
+	auto find_path() {
+		auto [path, time_spent] = launch_queue_pf(
 			array.get(), q1.get(), q2.get(), q1_cnt.get(), q2_cnt.get(), width, height, start, end,
 			flag_finished.get(), event_start.get(), event_end.get(), stream->stream());
-		stream->sync();
 		std::cout << "Time spent finding path is: " << time_spent << " ms\n";
+		return path;
 	}
 
 	constexpr uint32_t calculate_q_size(matrix& mat) {
