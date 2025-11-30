@@ -7,7 +7,6 @@
 #include <vector>
 
 #include "common.h"
-#include "gpu/kernel.h"
 #include "gpu/path_finder_queue.h"
 
 void find_shortest_path(std::vector<std::vector<type>>& mat, position start, position end) {
@@ -27,7 +26,8 @@ void find_shortest_path(std::vector<std::vector<type>>& mat, position start, pos
 			type next_row = curr.x + dr[i];
 			type next_col = curr.y + dc[i];
 
-			if (inside_bounds(next_row, next_col) && is_target(mat[next_row][next_col])) {
+			if (inside_bounds(next_row, next_col, SIZE, SIZE) &&
+				is_target(mat[next_row][next_col])) {
 				mat[next_row][next_col] = mat[curr.x][curr.y] + 1;
 				q.emplace(next_row, next_col);
 			}
@@ -46,7 +46,7 @@ void reconstruct_the_path(std::vector<std::vector<type>>& mat, position end) {
 			type next_row = curr.x + dr[i];
 			type next_col = curr.y + dc[i];
 			type val	  = mat[next_row][next_col];
-			if (inside_bounds(next_row, next_col) && is_path(val) && min - 1 == val) {
+			if (inside_bounds(next_row, next_col, SIZE, SIZE) && is_path(val) && min - 1 == val) {
 				min	 = val;
 				curr = {next_row, next_col};
 			}
@@ -92,7 +92,7 @@ std::pair<position, position> prepare_matrix(std::vector<std::vector<type>>& mat
 				mat[row][col] = EMPTY;
 		}
 	}
-	return {{row1, col1}, {row2, col2}};
+	return {{col1, row1}, {col2, row2}};
 }
 void prtype_matrix(const std::vector<std::vector<type>>& mat) {
 	for (const auto& row : mat) {
@@ -152,10 +152,37 @@ void check_matrix(std::vector<type>& mat) {
 	std::cout << "Anti-optimize check: " << checksum << " obstacles: " << obstacles_found
 			  << std::endl;
 }
+type  SIZE		= 16;
+type  SEED		= 0;
+float THRESHOLD = 0.4;
 
-int main() {
-	// We use (MAX_CURRENT - 1) as starting/ending positions, and (MAX_CURRENT - 2) as walls
-	std::vector	  mat(SIZE, std::vector<type>(SIZE, EMPTY));
+int main(int argc, char* argv[]) {
+	std::string mode = "cpu";
+
+	for (int i = 1; i < argc; ++i) {
+		std::string arg = argv[i];
+		if (arg == "--mode" && i + 1 < argc) {
+			mode = argv[i + 1];
+			if (mode != "cpu" && mode != "gpu") {
+				std::cerr << "Unknown mode: " << mode << ". Use 'cpu' or 'gpu'.\n";
+				return 1;
+			}
+		}
+	}
+
+	std::cout << "Running in [" << mode << "] mode.\n";
+	std::cout << "Welcome to path finder 3000\n";
+
+	std::cout
+		<< "Enter square size of your grid (beware, if you write somethign stupid like 64k it will crash the whole system)\n > ";
+	std::cin >> SIZE;
+	std::cout << "Enter threshold (0-1)\n > ";
+	std::cin >> THRESHOLD;
+	std::cout << "Enter seed (default: 0)\n > ";
+	std::cin >> SEED;
+
+	std::vector mat(SIZE, std::vector<type>(SIZE, EMPTY));
+
 	FastNoiseLite noise;
 	noise.SetSeed(SEED);
 	noise.SetFrequency(0.2f);
@@ -163,42 +190,21 @@ int main() {
 	noise.SetCellularReturnType(FastNoiseLite::CellularReturnType_Distance2Sub);
 	noise.SetCellularDistanceFunction(FastNoiseLite::CellularDistanceFunction_Euclidean);
 	noise.SetCellularJitter(0.25);
+
 	auto [start, end] = prepare_matrix(mat, noise);
-	prtype_matrix(mat);
-	gpu::path_finder_queue pfq(mat, start, end);
 
-	auto path = pfq.find_path();
-	for (const auto& pos : path) {
-		mat[pos.x][pos.y] = 1;
+	if (mode == "cpu") {
+		std::cout << "Executing CPU search...\n";
+		auto st = std::chrono::high_resolution_clock::now();
+		find_shortest_path(mat, start, end);
+		auto en = std::chrono::high_resolution_clock::now();
+		std::cout << "Time spent pathfinding [cpu] is: "
+				  << std::chrono::duration_cast<std::chrono::milliseconds>(en - st).count()
+				  << " ms\n";
+	} else if (mode == "gpu") {
+		std::cout << "Executing GPU search...\n";
+		gpu::path_finder_queue pfq(mat, start, end);
+
+		auto path = pfq.find_path();
 	}
-	prtype_matrix(mat);
-
-	//
-	// 	std::vector<type> mat2(SIZE * SIZE, EMPTY);
-	// 	for (int i = 0; i < mat2.size(); ++i) {
-	// 		mat2[i] = rand();
-	// 	}
-	//
-	// 	check_matrix(mat2);
-	// 	auto en = std::chrono::high_resolution_clock::now();
-	// 	std::cout << std::chrono::duration_cast<std::chrono::micr.ys>(en - st).count() <<
-	// "us\n";
-	//
-	// 	// auto [start, end] = std::pair(position {0, 0}, position {4, 4});
-	// 	//
-	// 	// find_shortest_path(mat, start, end);
-	// 	// reconstruct_the_path(mat, end);
-	// 	//
-	// 	//
-	// 	// << "us\n";
-	//
-	// 	// mat[start.x][start.y] = TARGET;
-	// 	// mat[end.x][end.y]	   = TARGET;
-	// 	// prtype_matrix(mat);
-	// 	// gpu::path_finder_chunk path_finder(mat, start, end);
-	//
-	// 	gpu::path_finder_chunk path_finder(mat, start, end);
-	// 	path_finder.launch_test();
-	//
-	// 	return 0;
 }

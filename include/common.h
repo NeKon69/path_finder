@@ -19,7 +19,7 @@ static_assert(MAX_CURRENT == 4294967295, "MAX_CURRENT must be a multiple of 32")
 #else
 #define DEVICE_HOST
 #define DEVICE
-#define CONSTANT_MEM
+#define CONSTANT_MEM const
 #endif
 
 using type = uint32_t;
@@ -41,7 +41,9 @@ struct position {
 
 using matrix = std::vector<std::vector<type>>;
 
-inline constexpr float THRESHOLD = 0.8f;
+extern float THRESHOLD;
+extern type	 SIZE;
+extern type	 SEED;
 // Don't change this to lower values!!! or my gpu logic is screwed
 inline constexpr type WALL		= MAX_CURRENT - 1;
 inline constexpr type TARGET	= MAX_CURRENT - 2;
@@ -50,8 +52,6 @@ inline constexpr type UNCHECKED = MAX_CURRENT - 4;
 static_assert(EMPTY < TARGET && TARGET < WALL && EMPTY > MAX_CURRENT / 2,
 			  "THIS IS NECESSARY FOR THE GPU WAVEFRONT TO WORK, DON'T CHANGE THAT!!!");
 // should be a multiple of 32
-inline constexpr type SIZE = 32;
-inline constexpr type SEED = 1234;
 
 CONSTANT_MEM static inline constexpr int dr[] = {-1, 1, 0, 0};
 CONSTANT_MEM static inline constexpr int dc[] = {0, 0, -1, 1};
@@ -59,8 +59,8 @@ CONSTANT_MEM static inline constexpr int dc[] = {0, 0, -1, 1};
 DEVICE_HOST inline bool is_path(type val) {
 	return val > 0 && val < EMPTY;
 }
-inline bool DEVICE_HOST inside_bounds(type row, type col) {
-	return row >= 0 && row < SIZE && col >= 0 && col < SIZE;
+inline bool DEVICE_HOST inside_bounds(type row, type col, type width, type height) {
+	return row >= 0 && row < height && col >= 0 && col < width;
 }
 inline bool DEVICE_HOST is_target(type val) {
 	return val == TARGET || val == EMPTY;

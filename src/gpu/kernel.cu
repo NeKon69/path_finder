@@ -38,8 +38,8 @@ __global__ void simple_path_finding(cudaSurfaceObject_t array, position* start, 
 		// if (is_target(val)) {
 		// 	printf("I AM TARGET!!! %u\n", val);
 		// }
-		if (inside_bounds(x, y) && is_target(surf2Dread<type>(array, x * sizeof(type), y)) &&
-			!updated) {
+		if (inside_bounds(x, y, width, height) &&
+			is_target(surf2Dread<type>(array, x * sizeof(type), y)) && !updated) {
 			type l = 0, r = 0, u = 0, d = 0;
 			if (x > 0)
 				l = surf2Dread<type>(array, (x - 1) * sizeof(type), y);
@@ -92,7 +92,7 @@ __global__ void rebuild_path_simple(cudaSurfaceObject_t array, position* path, p
 				type next_x = current_pos.x + dc[j];
 				type next_y = current_pos.y + dr[j];
 				type val;
-				if (inside_bounds(next_y, next_x) &&
+				if (inside_bounds(next_y, next_x, width, height) &&
 					((val = surf2Dread<type>(array, next_x * sizeof(type), next_y))) &&
 					is_path(val) && current_value - 1 == val) {
 					current_value = val;
@@ -185,6 +185,8 @@ constexpr __constant__ short dy[4]	  = {1, -1, 0, 0};
 __device__ inline void append_to_queue(position pos, type* q, type* q_cnt, type width) {
 	// returns what threads are currently active (means barnced on checking if the cell was changed)
 	uint32_t active_threads = act_warp();
+	// To prevent threads in current warp that wasn't suspeneded from actually working
+	uint32_t predicate_mask = __ballot_sync(active_threads, pos.x + width * pos.y);
 	uint32_t warp_tid		= threadIdx.x % 32;
 
 	// Produces result like this
@@ -193,13 +195,13 @@ __device__ inline void append_to_queue(position pos, type* q, type* q_cnt, type 
 	// So in general it just turns all bits behind current thread in warp to 1
 	uint32_t warp_mask = (1U << warp_tid) - 1;
 	// Returns threads that are active AND behind us
-	uint32_t rank = __popc(active_threads & warp_mask);
+	uint32_t rank = __popc(predicate_mask & warp_mask);
 
 	uint32_t warp_base_offset = 0;
 	uint32_t leader_tid		  = __ffs(active_threads) - 1;
 	if (warp_tid == leader_tid) {
 		// Count how many threads are active
-		uint32_t total_warp_add = __popc(active_threads);
+		uint32_t total_warp_add = __popc(predicate_mask);
 		if (total_warp_add) {
 			// Atomically add this amount
 			warp_base_offset = atomicAdd(q_cnt, total_warp_add);
@@ -211,23 +213,6 @@ __device__ inline void append_to_queue(position pos, type* q, type* q_cnt, type 
 	uint32_t curr_offset = warp_base_offset + rank;
 	// Pack 2d coordinates to 1d
 	q[curr_offset] = pos.x + width * pos.y;
-}
-
-__device__ unsigned int atomicLoad(const unsigned int* addr) {
-	const volatile unsigned int* vaddr = addr; // volatile to bypass cache
-	__threadfence();						   // for seq_cst loads. Remove for acquire semantics.
-	const unsigned int value = *vaddr;
-	// fence to ensure that dependent reads are correctly ordered
-	__threadfence();
-	return value;
-}
-
-// addr must be aligned properly.
-__device__ void atomicStore(unsigned int* addr, unsigned int value) {
-	volatile unsigned int* vaddr = addr; // volatile to bypass cache
-	// fence to ensure that previous non-atomic stores are visible to other threads
-	__threadfence();
-	*vaddr = value;
 }
 
 __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, type* q2_cnt,
@@ -254,7 +239,7 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 	type* next_q_cnt = q2_cnt;
 	type  depth		 = 1;
 
-	while (true) {
+	while (*finished_flag != 1 && *curr_q_cnt > 0) {
 		int curr_q_size = *curr_q_cnt;
 
 		for (int i = t_id; i < curr_q_size; i += total_threads) {
@@ -262,15 +247,13 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 			position curr_pos  = {curr_node % width, curr_node / width};
 
 			if (curr_pos == end) {
-				atomicAdd((unsigned int*)finished_flag, 1);
-				__threadfence();
-				printf("Path found with depth=%u in thread=%u, x=%u, y=%u\n", depth, t_id,
-					   curr_pos.x, curr_pos.y);
+				*finished_flag = 1;
 			}
 
 #pragma unroll
 			for (int i = 0; i < 4; ++i) {
 				position next = {curr_pos.x + dx[i], curr_pos.y + dy[i]};
+
 				if (next >= position {0, 0} && next < position {width, height} &&
 					next.x != UINT32_MAX && next.y != UINT32_MAX) {
 					if (__ldg(&array[next.x + next.y * width]) == EMPTY) {
@@ -283,27 +266,10 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 		}
 
 		grid.sync();
-		unsigned int flag_val	  = atomicLoad((unsigned int*)finished_flag);
-		unsigned int next_cnt_val = atomicLoad((unsigned int*)next_q_cnt);
-
-		bool should_exit = (flag_val > 0) || (next_cnt_val == 0);
-
-		if (should_exit) {
-			if (threadIdx.x % 32 == 0) {
-				printf("Exiting (warp %u/%u), step=%u\n", t_id / 32, total_threads / 32, depth);
-			}
-			break;
-		}
 
 		if (t_id == 0) {
 			*curr_q_cnt = 0;
 		}
-
-		if (threadIdx.x % 32 == 0) {
-			printf("warp %u/%u, step=%u, waiting for others...\n", t_id / 32, total_threads / 32,
-				   depth);
-		}
-
 		grid.sync();
 		using cuda::std::swap;
 		swap(curr_q, next_q);

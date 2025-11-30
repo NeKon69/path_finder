@@ -86,7 +86,12 @@ std::tuple<std::vector<position>, float> launch_queue_pf(
 	int numThreads	   = 1024;
 	CUDA_SAFE_CALL(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, find_path_queue,
 																 numThreads, 0));
-	int numBlocks = numBlocksPerSm * props.multiProcessorCount;
+	int	   maxHardwareBlocks  = numBlocksPerSm * props.multiProcessorCount;
+	double diagonal_radius	  = std::hypot(width / 2.0, height / 2.0);
+	size_t max_wavefront_size = static_cast<size_t>(diagonal_radius * 16);
+	int	   neededBlocks		  = (max_wavefront_size + numThreads - 1) / numThreads;
+	int	   numBlocks		  = std::min(maxHardwareBlocks, std::max(1, neededBlocks));
+
 	printf("Launch Config: %d Blocks, %d Threads \n", numBlocks, numThreads);
 
 	void* kernelArgs[] = {&array, &q1,	   &q2,	   &q1_cnt, &q2_cnt,
@@ -103,6 +108,15 @@ std::tuple<std::vector<position>, float> launch_queue_pf(
 	CUDA_SAFE_CALL(cudaMemcpyAsync(matrix, array, width * height * sizeof(type),
 								   cudaMemcpyDeviceToHost, stream));
 	CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
+	std::vector<std::vector<type>> debugMatrix;
+	debugMatrix.reserve(height);
+
+	for (int y = 0; y < height; ++y) {
+		type* rowStart = matrix + (y * width);
+		type* rowEnd   = rowStart + width;
+
+		debugMatrix.emplace_back(rowStart, rowEnd);
+	}
 	auto path = reconstruct_path_flat(matrix, width, height, end);
 	CUDA_SAFE_CALL(cudaFreeHost(matrix));
 

@@ -4,7 +4,10 @@
 
 #pragma once
 
+#include <cooperative_groups.h>
 #include <cuda_runtime.h>
+
+#include <cuda/functional>
 
 #include "common.h"
 namespace gpu {
@@ -25,4 +28,7 @@ extern __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1
 extern __global__ void rebuild_path_plain(type* array, position* path, position start, position end,
 										  type* path_length, type width, type height);
 
+extern __global__ void find_path_queue_TEST_1(type* array, type* q1, type* q2, type* q1_cnt,
+											  type* q2_cnt, type width, type height, position start,
+											  position end, volatile type* finished_flag);
 } // namespace gpu
