@@ -135,6 +135,51 @@ __global__ void rebuild_path_simple(cudaSurfaceObject_t array, position* path, p
 // 		}
 // 	}
 // }
+//
+
+__global__ void reconstruct_path_fast(const type* __restrict__ matrix, int width, int height,
+									  position end, position* out_path) {
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+	if (idx > 0)
+		return;
+
+	position curr		= end;
+	int		 step_count = 0;
+
+	out_path[step_count++] = curr;
+
+	type current_val = __ldg(&matrix[curr.y * width + curr.x]);
+
+	while (current_val > 0 && current_val < TARGET) {
+		bool found_prev = false;
+#pragma unroll
+		for (int i = 0; i < 4; ++i) {
+			int next_x = (int)curr.x + dc[i];
+			int next_y = (int)curr.y + dr[i];
+
+			if (next_y >= 0 && next_y < height && next_x >= 0 && next_x < width) {
+				int next_idx = next_y * width + next_x;
+
+				type val = __ldg(&matrix[next_idx]);
+
+				if (val == current_val - 1) {
+					current_val = val;
+					curr.x		= (type)next_x;
+					curr.y		= (type)next_y;
+
+					out_path[step_count++] = curr;
+
+					found_prev = true;
+					break;
+				}
+			}
+		}
+
+		if (!found_prev) {
+			break;
+		}
+	}
+}
 
 __global__ void check_full_array(cudaSurfaceObject_t array, position* points, type width,
 								 type height, type cells_per_thread) {
@@ -217,7 +262,7 @@ __device__ inline void append_to_queue(position pos, type* q, type* q_cnt, type 
 
 __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, type* q2_cnt,
 								type width, type height, position start, position end,
-								volatile type* finished_flag) {
+								type* path_len, volatile type* finished_flag) {
 	cg::grid_group grid			 = cg::this_grid();
 	uint32_t	   t_id			 = grid.thread_rank();
 	uint32_t	   total_threads = grid.size();
@@ -275,6 +320,9 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 		swap(curr_q, next_q);
 		swap(curr_q_cnt, next_q_cnt);
 		depth++;
+	}
+	if (t_id == 0) {
+		*path_len = depth;
 	}
 }
 } // namespace gpu

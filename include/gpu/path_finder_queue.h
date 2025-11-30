@@ -24,6 +24,8 @@ private:
 
 	position start, end;
 
+	raw::cuda_wrappers::buffer<type> path_len;
+
 	raw::cuda_wrappers::buffer<type> flag_finished;
 
 	raw::cuda_wrappers::event event_start;
@@ -41,6 +43,7 @@ public:
 		  height(matrix_.size()),
 		  start(start_),
 		  end(end_),
+		  path_len(sizeof(type), stream),
 		  flag_finished(sizeof(type), stream) {
 		std::vector<type> former_matrix(matrix_.size() * matrix_[0].size());
 		auto			  dest_iterator = former_matrix.begin();
@@ -56,9 +59,22 @@ public:
 	}
 
 	auto find_path() {
-		auto [path, time_spent] = launch_queue_pf(
-			array.get(), q1.get(), q2.get(), q1_cnt.get(), q2_cnt.get(), width, height, start, end,
-			flag_finished.get(), event_start.get(), event_end.get(), stream->stream());
+		auto run_algo = [&](auto&&... extra_args) {
+			return launch_queue_pf(
+				array.get(), q1.get(), q2.get(), q1_cnt.get(), q2_cnt.get(), width, height, start,
+				end, flag_finished.get(), event_start.get(), event_end.get(), stream->stream(),
+				path_len.get(), std::forward<decltype(extra_args)>(extra_args)...);
+		};
+
+		auto [path, time_spent] = [&]() {
+			if (MODE == mode::gpu) {
+				raw::cuda_wrappers::buffer<position> d_path(width + height * sizeof(position),
+															stream);
+				return run_algo(std::move(d_path));
+			}
+			return run_algo();
+		}();
+
 		std::cout << "Time spent finding path is: " << time_spent << " ms\n";
 		return path;
 	}

@@ -155,6 +155,7 @@ void check_matrix(std::vector<type>& mat) {
 type  SIZE		= 16;
 type  SEED		= 0;
 float THRESHOLD = 0.4;
+mode  MODE		= mode::cpu;
 
 int main(int argc, char* argv[]) {
 	std::string mode = "cpu";
@@ -180,6 +181,13 @@ int main(int argc, char* argv[]) {
 	std::cin >> THRESHOLD;
 	std::cout << "Enter seed (default: 0)\n > ";
 	std::cin >> SEED;
+
+	if (mode == "gpu") {
+		std::cout << "Choose path reconstruction algorithm:\n 0: cpu\n 1: gpu\n > ";
+		int mode_ = 0;
+		std::cin >> mode_;
+		MODE = mode_ == 0 ? mode::cpu : mode::gpu;
+	}
 
 	std::vector mat(SIZE, std::vector<type>(SIZE, EMPTY));
 

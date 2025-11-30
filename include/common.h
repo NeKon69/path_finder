@@ -41,9 +41,11 @@ struct position {
 
 using matrix = std::vector<std::vector<type>>;
 
+enum class mode { cpu, gpu };
 extern float THRESHOLD;
 extern type	 SIZE;
 extern type	 SEED;
+extern mode	 MODE;
 // Don't change this to lower values!!! or my gpu logic is screwed
 inline constexpr type WALL		= MAX_CURRENT - 1;
 inline constexpr type TARGET	= MAX_CURRENT - 2;

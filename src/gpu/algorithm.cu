@@ -11,6 +11,7 @@
 // @clang-format on
 
 #include "cpu/path_rebuilder.h"
+#include "cuda_wrappers/buffer.h"
 #include "cuda_wrappers/error.h"
 #include "gpu/algorithm.h"
 #include "gpu/kernel.h"
@@ -76,7 +77,8 @@ float launch_test_look(cudaSurfaceObject_t array, position* points, type width, 
 std::tuple<std::vector<position>, float> launch_queue_pf(
 	type* array, type* q1, type* q2, type* q1_cnt, type* q2_cnt, type width, type height,
 	position start, position end, type* finished_flag, cudaEvent_t start_event,
-	cudaEvent_t end_event, cudaStream_t stream) {
+	cudaEvent_t end_event, cudaStream_t stream, type* path_len,
+	raw::cuda_wrappers::buffer<position> path) {
 	printf("Start is at (%u, %u), end is at (%u, %u)\n", start.x, start.y, end.x, end.y);
 	int deviceId = 0;
 	cudaGetDevice(&deviceId);
@@ -94,35 +96,68 @@ std::tuple<std::vector<position>, float> launch_queue_pf(
 
 	printf("Launch Config: %d Blocks, %d Threads \n", numBlocks, numThreads);
 
-	void* kernelArgs[] = {&array, &q1,	   &q2,	   &q1_cnt, &q2_cnt,
-						  &width, &height, &start, &end,	&finished_flag};
+	void* kernelArgs[] = {&array,  &q1,	   &q2,	 &q1_cnt,	&q2_cnt,	   &width,
+						  &height, &start, &end, &path_len, &finished_flag};
 	CUDA_SAFE_CALL(cudaEventRecord(start_event));
 	CUDA_SAFE_CALL(
 		cudaLaunchCooperativeKernel(find_path_queue, numBlocks, numThreads, kernelArgs, 0, stream));
 	CUDA_SAFE_CALL(cudaEventRecord(end_event));
+	type path_length = 0;
+	CUDA_SAFE_CALL(
+		cudaMemcpyAsync(&path_length, path_len, sizeof(type), cudaMemcpyDeviceToHost, stream));
 	CUDA_SAFE_CALL(cudaEventSynchronize(end_event));
 
-	type* matrix;
-	CUDA_SAFE_CALL(cudaMallocHost(&matrix, width * height * sizeof(type)));
+	std::vector<position> path_cpu;
 
-	CUDA_SAFE_CALL(cudaMemcpyAsync(matrix, array, width * height * sizeof(type),
-								   cudaMemcpyDeviceToHost, stream));
-	CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
-	std::vector<std::vector<type>> debugMatrix;
-	debugMatrix.reserve(height);
+	cudaEvent_t backtracing_start;
+	cudaEvent_t backtracing_end;
+	CUDA_SAFE_CALL(cudaEventCreate(&backtracing_start));
+	CUDA_SAFE_CALL(cudaEventCreate(&backtracing_end));
 
-	for (int y = 0; y < height; ++y) {
-		type* rowStart = matrix + (y * width);
-		type* rowEnd   = rowStart + width;
+	if (MODE == mode::gpu) {
+		path_cpu.reserve(path_length);
 
-		debugMatrix.emplace_back(rowStart, rowEnd);
+		CUDA_SAFE_CALL(cudaEventRecord(backtracing_start, stream));
+		if (path.get_size() > width + height) {
+			path =
+				std::move(raw::cuda_wrappers::buffer<position>(path_length * sizeof(position) + 8));
+		}
+		reconstruct_path_fast<<<1, 1, 0, stream>>>(array, width, height, end, path.get());
+		cudaMemcpyAsync(path_cpu.data(), path.get(), width * height * sizeof(position),
+						cudaMemcpyDeviceToHost, stream);
+
+		CUDA_SAFE_CALL(cudaEventRecord(backtracing_end, stream));
+		CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
+		float milliseconds = 0;
+		CUDA_SAFE_CALL(cudaEventSynchronize(backtracing_end));
+		CUDA_SAFE_CALL(cudaEventElapsedTime(&milliseconds, backtracing_start, backtracing_end));
+		std::cout << "Backtracing [gpu] took: " << milliseconds << "ms" << std::endl;
+
+	} else {
+		CUDA_SAFE_CALL(cudaEventRecord(backtracing_start, stream));
+		type* matrix;
+		CUDA_SAFE_CALL(cudaMallocHost(&matrix, width * height * sizeof(type)));
+
+		CUDA_SAFE_CALL(cudaMemcpyAsync(matrix, array, width * height * sizeof(type),
+									   cudaMemcpyDeviceToHost, stream));
+		CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
+		path_cpu = reconstruct_path_flat(matrix, width, height, end);
+		CUDA_SAFE_CALL(cudaFreeHost(matrix));
+
+		CUDA_SAFE_CALL(cudaEventRecord(backtracing_end, stream));
+		CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
+		float milliseconds = 0;
+		CUDA_SAFE_CALL(cudaEventSynchronize(backtracing_end));
+		CUDA_SAFE_CALL(cudaEventElapsedTime(&milliseconds, backtracing_start, backtracing_end));
+		std::cout << "Backtracing [cpu] took: " << milliseconds << "ms" << std::endl;
 	}
-	auto path = reconstruct_path_flat(matrix, width, height, end);
-	CUDA_SAFE_CALL(cudaFreeHost(matrix));
 
 	float milliseconds = 0;
 	CUDA_SAFE_CALL(cudaEventElapsedTime(&milliseconds, start_event, end_event));
-	return {path, milliseconds};
+	CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
+	CUDA_SAFE_CALL(cudaEventDestroy(backtracing_start));
+	CUDA_SAFE_CALL(cudaEventDestroy(backtracing_end));
+	return {path_cpu, milliseconds};
 }
 
 } // namespace gpu
