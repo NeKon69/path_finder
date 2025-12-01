@@ -80,6 +80,7 @@ public:
 	}
 
 	constexpr uint32_t calculate_q_size(matrix& mat) {
+		// return mat.size() * mat[0].size();
 		return std::hypot(mat.size() / 2, mat[0].size() / 2) * 16;
 	}
 };

@@ -7,6 +7,7 @@
 #include <surface_types.h>
 
 #include <cstdint>
+#include <cstdio>
 
 #include "common.h"
 #include "gpu/kernel.h"
@@ -139,12 +140,12 @@ __global__ void rebuild_path_simple(cudaSurfaceObject_t array, position* path, p
 
 __global__ void reconstruct_path_fast(const type* __restrict__ matrix, int width, int height,
 									  position end, position* out_path) {
-	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+	int64_t idx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (idx > 0)
 		return;
 
 	position curr		= end;
-	int		 step_count = 0;
+	uint32_t step_count = 0;
 
 	out_path[step_count++] = curr;
 
@@ -154,11 +155,11 @@ __global__ void reconstruct_path_fast(const type* __restrict__ matrix, int width
 		bool found_prev = false;
 #pragma unroll
 		for (int i = 0; i < 4; ++i) {
-			int next_x = (int)curr.x + dc[i];
-			int next_y = (int)curr.y + dr[i];
+			int64_t next_x = (int)curr.x + dc[i];
+			int64_t next_y = (int)curr.y + dr[i];
 
 			if (next_y >= 0 && next_y < height && next_x >= 0 && next_x < width) {
-				int next_idx = next_y * width + next_x;
+				int64_t next_idx = next_y * width + next_x;
 
 				type val = __ldg(&matrix[next_idx]);
 
@@ -176,6 +177,7 @@ __global__ void reconstruct_path_fast(const type* __restrict__ matrix, int width
 		}
 
 		if (!found_prev) {
+			printf("Well, no path was found");
 			break;
 		}
 	}
@@ -227,12 +229,12 @@ __device__ auto&			 act_warp = __activemask;
 constexpr __constant__ short dx[4]	  = {0, 0, -1, 1};
 constexpr __constant__ short dy[4]	  = {1, -1, 0, 0};
 
-__device__ inline void append_to_queue(position pos, type* q, type* q_cnt, type width) {
+__device__ inline void append_to_queue(position pos, type* q, type* q_cnt, type width, type value) {
 	// returns what threads are currently active (means barnced on checking if the cell was changed)
 	uint32_t active_threads = act_warp();
+	uint32_t mask			= __ballot_sync(active_threads, value == EMPTY);
 	// To prevent threads in current warp that wasn't suspeneded from actually working
-	uint32_t predicate_mask = __ballot_sync(active_threads, pos.x + width * pos.y);
-	uint32_t warp_tid		= threadIdx.x % 32;
+	uint32_t warp_tid = threadIdx.x % 32;
 
 	// Produces result like this
 	// Let's say our thread in warp is third
@@ -240,20 +242,20 @@ __device__ inline void append_to_queue(position pos, type* q, type* q_cnt, type 
 	// So in general it just turns all bits behind current thread in warp to 1
 	uint32_t warp_mask = (1U << warp_tid) - 1;
 	// Returns threads that are active AND behind us
-	uint32_t rank = __popc(predicate_mask & warp_mask);
+	uint32_t rank = __popc(mask & warp_mask);
 
 	uint32_t warp_base_offset = 0;
-	uint32_t leader_tid		  = __ffs(active_threads) - 1;
+	uint32_t leader_tid		  = __ffs(mask) - 1;
 	if (warp_tid == leader_tid) {
 		// Count how many threads are active
-		uint32_t total_warp_add = __popc(predicate_mask);
+		uint32_t total_warp_add = __popc(mask);
 		if (total_warp_add) {
 			// Atomically add this amount
 			warp_base_offset = atomicAdd(q_cnt, total_warp_add);
 		}
 	}
 	// Distribute warp_base_offset accross all threads in warp
-	warp_base_offset = __shfl_sync(active_threads, warp_base_offset, leader_tid);
+	warp_base_offset = __shfl_sync(mask, warp_base_offset, leader_tid);
 
 	uint32_t curr_offset = warp_base_offset + rank;
 	// Pack 2d coordinates to 1d
@@ -284,26 +286,38 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 	type* next_q_cnt = q2_cnt;
 	type  depth		 = 1;
 
-	while (*finished_flag != 1 && *curr_q_cnt > 0) {
-		int curr_q_size = *curr_q_cnt;
+	while (true) {
+		grid.sync();
+		bool done = *finished_flag == 1 || *curr_q_cnt == 0;
+		if (done) {
+			break;
+		}
+		type curr_q_size = *curr_q_cnt;
 
-		for (int i = t_id; i < curr_q_size; i += total_threads) {
-			type	 curr_node = curr_q[i];
-			position curr_pos  = {curr_node % width, curr_node / width};
+		if (t_id < curr_q_size) {
+			for (type i = t_id; i < curr_q_size; i += total_threads) {
+				type	 curr_node = curr_q[i];
+				position curr_pos  = {curr_node % width, curr_node / width};
 
-			if (curr_pos == end) {
-				*finished_flag = 1;
-			}
+				if (curr_pos == end) {
+					*finished_flag = 1;
+				}
 
 #pragma unroll
-			for (int i = 0; i < 4; ++i) {
-				position next = {curr_pos.x + dx[i], curr_pos.y + dy[i]};
+				for (uint_fast8_t i = 0; i < 4; ++i) {
+					int64_t nx = curr_pos.x + (int)dx[i];
+					int64_t ny = curr_pos.y + (int)dy[i];
 
-				if (next >= position {0, 0} && next < position {width, height} &&
-					next.x != UINT32_MAX && next.y != UINT32_MAX) {
-					if (__ldg(&array[next.x + next.y * width]) == EMPTY) {
-						if (atomicCAS(&array[next.x + next.y * width], EMPTY, depth) == EMPTY) {
-							append_to_queue(next, next_q, next_q_cnt, width);
+					bool in_bounds = (nx < width) && (ny < height) && (nx >= 0) && (ny >= 0);
+					if (in_bounds) {
+						size_t next_idx = (size_t)ny * (size_t)width + (size_t)nx;
+						if (__ldg(&array[next_idx]) == EMPTY) {
+							if (auto val =
+									(atomicCAS(&array[nx + ny * size_t(width)], EMPTY, depth));
+								val == EMPTY) {
+								append_to_queue(position {type(nx), type(ny)}, next_q, next_q_cnt,
+												width, val);
+							}
 						}
 					}
 				}
@@ -316,13 +330,13 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 			*curr_q_cnt = 0;
 		}
 		grid.sync();
+
 		using cuda::std::swap;
 		swap(curr_q, next_q);
 		swap(curr_q_cnt, next_q_cnt);
+
 		depth++;
 	}
-	if (t_id == 0) {
-		*path_len = depth;
-	}
 }
+
 } // namespace gpu

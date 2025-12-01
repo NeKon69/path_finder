@@ -33,6 +33,7 @@ inline std::vector<position> reconstruct_path_flat(type* matrix, int width, int 
 		}
 
 		if (!found_prev) {
+			printf("Well no path was found");
 			break;
 		}
 	}

@@ -10,7 +10,6 @@
 #include <vector>
 
 inline constexpr auto MAX_CURRENT = UINT32_MAX;
-static_assert(MAX_CURRENT == 4294967295, "MAX_CURRENT must be a multiple of 32");
 
 #ifdef __CUDACC__
 #define DEVICE_HOST __device__ __host__

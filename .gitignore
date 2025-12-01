@@ -140,3 +140,4 @@ main
 .idea
 .nvim
 include/gpu/noise
+temp*

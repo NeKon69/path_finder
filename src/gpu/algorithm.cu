@@ -85,14 +85,17 @@ std::tuple<std::vector<position>, float> launch_queue_pf(
 	cudaDeviceProp props;
 	cudaGetDeviceProperties(&props, deviceId);
 	int numBlocksPerSm = 0;
-	int numThreads	   = 1024;
+	int numThreads	   = 256;
 	CUDA_SAFE_CALL(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, find_path_queue,
 																 numThreads, 0));
 	int	   maxHardwareBlocks  = numBlocksPerSm * props.multiProcessorCount;
 	double diagonal_radius	  = std::hypot(width / 2.0, height / 2.0);
 	size_t max_wavefront_size = static_cast<size_t>(diagonal_radius * 16);
 	int	   neededBlocks		  = (max_wavefront_size + numThreads - 1) / numThreads;
-	int	   numBlocks		  = std::min(maxHardwareBlocks, std::max(1, neededBlocks));
+	int	   numBlocks		  = std::min(maxHardwareBlocks, std::max(1, neededBlocks)) * 0.5f;
+	if (numBlocks == 0) {
+		numBlocks = 1;
+	}
 
 	printf("Launch Config: %d Blocks, %d Threads \n", numBlocks, numThreads);
 
@@ -105,7 +108,7 @@ std::tuple<std::vector<position>, float> launch_queue_pf(
 	type path_length = 0;
 	CUDA_SAFE_CALL(
 		cudaMemcpyAsync(&path_length, path_len, sizeof(type), cudaMemcpyDeviceToHost, stream));
-	CUDA_SAFE_CALL(cudaEventSynchronize(end_event));
+	CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
 
 	std::vector<position> path_cpu;
 
@@ -123,8 +126,8 @@ std::tuple<std::vector<position>, float> launch_queue_pf(
 				std::move(raw::cuda_wrappers::buffer<position>(path_length * sizeof(position) + 8));
 		}
 		reconstruct_path_fast<<<1, 1, 0, stream>>>(array, width, height, end, path.get());
-		cudaMemcpyAsync(path_cpu.data(), path.get(), width * height * sizeof(position),
-						cudaMemcpyDeviceToHost, stream);
+		CUDA_SAFE_CALL(cudaMemcpyAsync(path_cpu.data(), path.get(), path_length * sizeof(position),
+									   cudaMemcpyDeviceToHost, stream));
 
 		CUDA_SAFE_CALL(cudaEventRecord(backtracing_end, stream));
 		CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
@@ -134,10 +137,10 @@ std::tuple<std::vector<position>, float> launch_queue_pf(
 		std::cout << "Backtracing [gpu] took: " << milliseconds << "ms" << std::endl;
 
 	} else {
-		CUDA_SAFE_CALL(cudaEventRecord(backtracing_start, stream));
 		type* matrix;
 		CUDA_SAFE_CALL(cudaMallocHost(&matrix, width * height * sizeof(type)));
 
+		CUDA_SAFE_CALL(cudaEventRecord(backtracing_start, stream));
 		CUDA_SAFE_CALL(cudaMemcpyAsync(matrix, array, width * height * sizeof(type),
 									   cudaMemcpyDeviceToHost, stream));
 		CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
@@ -155,8 +158,10 @@ std::tuple<std::vector<position>, float> launch_queue_pf(
 	float milliseconds = 0;
 	CUDA_SAFE_CALL(cudaEventElapsedTime(&milliseconds, start_event, end_event));
 	CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
+
 	CUDA_SAFE_CALL(cudaEventDestroy(backtracing_start));
 	CUDA_SAFE_CALL(cudaEventDestroy(backtracing_end));
+
 	return {path_cpu, milliseconds};
 }
 
