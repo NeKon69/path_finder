@@ -110,7 +110,7 @@ std::tuple<std::vector<position>, float> launch_queue_pf(
 		cudaMemcpyAsync(&path_length, path_len, sizeof(type), cudaMemcpyDeviceToHost, stream));
 	CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
 
-	std::vector<position> path_cpu;
+	std::vector<position> path_cpu(path_length);
 
 	cudaEvent_t backtracing_start;
 	cudaEvent_t backtracing_end;
@@ -118,10 +118,10 @@ std::tuple<std::vector<position>, float> launch_queue_pf(
 	CUDA_SAFE_CALL(cudaEventCreate(&backtracing_end));
 
 	if (MODE == mode::gpu) {
-		path_cpu.reserve(path_length);
+		path_cpu.resize(path_length);
 
 		CUDA_SAFE_CALL(cudaEventRecord(backtracing_start, stream));
-		if (path.get_size() > width + height) {
+		if (path.get_size() < path_length * sizeof(position)) {
 			path =
 				std::move(raw::cuda_wrappers::buffer<position>(path_length * sizeof(position) + 8));
 		}

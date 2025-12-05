@@ -305,15 +305,14 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 
 #pragma unroll
 				for (uint_fast8_t i = 0; i < 4; ++i) {
-					int64_t nx = curr_pos.x + (int)dx[i];
-					int64_t ny = curr_pos.y + (int)dy[i];
+					int64_t nx = curr_pos.x + (int)dr[i];
+					int64_t ny = curr_pos.y + (int)dc[i];
 
 					bool in_bounds = (nx < width) && (ny < height) && (nx >= 0) && (ny >= 0);
 					if (in_bounds) {
 						size_t next_idx = (size_t)ny * (size_t)width + (size_t)nx;
 						if (__ldg(&array[next_idx]) == EMPTY) {
-							if (auto val =
-									(atomicCAS(&array[nx + ny * size_t(width)], EMPTY, depth));
+							if (auto val = atomicCAS(&array[nx + ny * size_t(width)], EMPTY, depth);
 								val == EMPTY) {
 								append_to_queue(position {type(nx), type(ny)}, next_q, next_q_cnt,
 												width, val);
@@ -336,6 +335,9 @@ __global__ void find_path_queue(type* array, type* q1, type* q2, type* q1_cnt, t
 		swap(curr_q_cnt, next_q_cnt);
 
 		depth++;
+	}
+	if (t_id == 0) {
+		atomicAdd(path_len, depth);
 	}
 }
 

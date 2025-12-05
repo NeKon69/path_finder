@@ -1,18 +1,20 @@
 #include <gpu/noise/FastNoiseLiteCUDA.h>
 
 #include <chrono>
+#include <fstream>
 #include <iostream>
 #include <queue>
 #include <random>
 #include <vector>
 
 #include "common.h"
+#include "cpu/path_finder.h"
 #include "gpu/path_finder_queue.h"
 
 void find_shortest_path(std::vector<std::vector<type>>& mat, position start, position end) {
 	std::queue<position> q;
 	q.push(start);
-	mat[start.x][start.y] = 1;
+	mat[start.y][start.x] = 1;
 
 	while (!q.empty()) {
 		position curr = q.front();
@@ -23,13 +25,12 @@ void find_shortest_path(std::vector<std::vector<type>>& mat, position start, pos
 		}
 
 		for (int i = 0; i < 4; ++i) {
-			type next_row = curr.x + dr[i];
-			type next_col = curr.y + dc[i];
+			type next_x = curr.x + dc[i];
+			type next_y = curr.y + dr[i];
 
-			if (inside_bounds(next_row, next_col, SIZE, SIZE) &&
-				is_target(mat[next_row][next_col])) {
-				mat[next_row][next_col] = mat[curr.x][curr.y] + 1;
-				q.emplace(next_row, next_col);
+			if (inside_bounds(next_y, next_x, SIZE, SIZE) && is_target(mat[next_y][next_x])) {
+				mat[next_y][next_x] = mat[curr.y][curr.x] + 1;
+				q.emplace(next_x, next_y);
 			}
 		}
 	}
@@ -39,35 +40,43 @@ void reconstruct_the_path(std::vector<std::vector<type>>& mat, position end) {
 	position			  curr = end;
 	std::vector<position> path;
 	path.reserve(SIZE);
-	while (mat[curr.x][curr.y] != 1) {
-		type min = mat[curr.x][curr.y];
+	path.push_back(end);
+
+	while (mat[curr.y][curr.x] != 1) {
+		type current_val = mat[curr.y][curr.x];
+		bool found		 = false;
 
 		for (int i = 0; i < 4; ++i) {
-			type next_row = curr.x + dr[i];
-			type next_col = curr.y + dc[i];
-			type val	  = mat[next_row][next_col];
-			if (inside_bounds(next_row, next_col, SIZE, SIZE) && is_path(val) && min - 1 == val) {
-				min	 = val;
-				curr = {next_row, next_col};
+			type next_x = curr.x + dc[i];
+			type next_y = curr.y + dr[i];
+
+			if (!inside_bounds(next_y, next_x, SIZE, SIZE))
+				continue;
+			type val = mat[next_y][next_x];
+
+			if (is_path(val) && val == current_val - 1) {
+				curr  = {next_x, next_y};
+				found = true;
+				break;
 			}
 		}
+
+		if (!found)
+			break;
 		path.push_back(curr);
 	}
-
-	for (int row = 0; row < SIZE; ++row) {
-		for (int col = 0; col < SIZE; ++col) {
-			type val = mat[row][col];
+	for (type y = 0; y < SIZE; ++y) {
+		for (type x = 0; x < SIZE; ++x) {
+			type val = mat[y][x];
 			if (val > 0 && val != WALL && val != TARGET) {
-				mat[row][col] = EMPTY;
+				mat[y][x] = EMPTY;
 			}
 		}
 	}
-
-	for (const auto& [row, col] : path) {
-		mat[row][col] = 1;
+	for (const auto& [x, y] : path) {
+		mat[y][x] = 1;
 	}
 }
-
 std::pair<position, position> prepare_matrix(std::vector<std::vector<type>>& mat,
 											 const FastNoiseLite&			 noise) {
 	std::mt19937						  gen(SEED);
@@ -76,9 +85,9 @@ std::pair<position, position> prepare_matrix(std::vector<std::vector<type>>& mat
 	const type							  row1 = target_dist(gen);
 	const type							  col1 = target_dist(gen);
 
-	mat[row1][col1] = TARGET;
 	const type row2 = target_dist(gen);
 	const type col2 = target_dist(gen);
+	mat[row1][col1] = TARGET;
 	mat[row2][col2] = TARGET;
 
 	for (auto row = 0; row < mat.size(); row++) {
@@ -152,30 +161,130 @@ void check_matrix(std::vector<type>& mat) {
 	std::cout << "Anti-optimize check: " << checksum << " obstacles: " << obstacles_found
 			  << std::endl;
 }
-type  SIZE		= 16;
+
+uint8_t pack_value(type val) {
+	if (val == EMPTY)
+		return 0;
+	if (val == WALL)
+		return 1;
+	if (val == TARGET)
+		return 2;
+	return 0;
+}
+
+type unpack_value(uint8_t code) {
+	if (code == 0)
+		return EMPTY;
+	if (code == 1)
+		return WALL;
+	if (code == 2)
+		return TARGET;
+	return EMPTY;
+}
+
+void save_matrix(const std::string& filename, int size, position start, position end,
+				 const std::vector<std::vector<type>>& mat) {
+	std::ofstream out(filename, std::ios::binary);
+	if (!out) {
+		std::cerr << "Error: Could not create file " << filename << "\n";
+		return;
+	}
+
+	out.write(reinterpret_cast<const char*>(&size), sizeof(size));
+	out.write(reinterpret_cast<const char*>(&start), sizeof(start));
+	out.write(reinterpret_cast<const char*>(&end), sizeof(end));
+
+	uint8_t buffer		= 0;
+	int		bits_filled = 0;
+
+	for (const auto& row : mat) {
+		for (const auto& val : row) {
+			uint8_t code = pack_value(val);
+			buffer |= (code << (6 - bits_filled));
+
+			bits_filled += 2;
+			if (bits_filled == 8) {
+				out.put(static_cast<char>(buffer));
+				buffer		= 0;
+				bits_filled = 0;
+			}
+		}
+	}
+
+	if (bits_filled > 0) {
+		out.put(static_cast<char>(buffer));
+	}
+}
+
+bool load_matrix(const std::string& filename, type& size, position& start, position& end,
+				 std::vector<std::vector<type>>& mat) {
+	std::ifstream in(filename, std::ios::binary);
+	if (!in)
+		return false;
+
+	in.read(reinterpret_cast<char*>(&size), sizeof(size));
+	in.read(reinterpret_cast<char*>(&start), sizeof(start));
+	in.read(reinterpret_cast<char*>(&end), sizeof(end));
+
+	mat.assign(size, std::vector<type>(size));
+
+	char byte_char;
+	int	 row = 0;
+	int	 col = 0;
+
+	while (in.get(byte_char)) {
+		uint8_t buffer = static_cast<uint8_t>(byte_char);
+		for (int i = 0; i < 4; ++i) {
+			if (row >= size)
+				break;
+			uint8_t code = (buffer >> (6 - i * 2)) & 0x03;
+
+			mat[row][col] = unpack_value(code);
+
+			col++;
+			if (col == size) {
+				col = 0;
+				row++;
+			}
+		}
+	}
+
+	std::cout << ">> Matrix loaded (2-bit unpacked) from " << filename << "\n";
+	return true;
+}
+
+type  SIZE		= 10;
 type  SEED		= 0;
 float THRESHOLD = 0.4;
-mode  MODE		= mode::cpu;
+mode  MODE		= mode::gpu;
 
 int main(int argc, char* argv[]) {
-	std::string mode = "cpu";
+	std::string mode	  = "cpu";
+	std::string save_file = "";
+	std::string load_file = "";
 
 	for (int i = 1; i < argc; ++i) {
 		std::string arg = argv[i];
 		if (arg == "--mode" && i + 1 < argc) {
 			mode = argv[i + 1];
-			if (mode != "cpu" && mode != "gpu") {
-				std::cerr << "Unknown mode: " << mode << ". Use 'cpu' or 'gpu'.\n";
-				return 1;
-			}
+			i++;
+		} else if (arg == "--create" && i + 1 < argc) {
+			save_file = argv[i + 1];
+			i++;
+		} else if (arg == "--load" && i + 1 < argc) {
+			load_file = argv[i + 1];
+			i++;
 		}
+	}
+
+	if (mode != "cpu" && mode != "gpu") {
+		std::cerr << "Unknown mode: " << mode << ". Use 'cpu' or 'gpu'.\n";
+		return 1;
 	}
 
 	std::cout << "Running in [" << mode << "] mode.\n";
 	std::cout << "Welcome to path finder 3000\n";
-
-	std::cout
-		<< "Enter square size of your grid (beware, if you write somethign stupid like 64k it will crash the whole system)\n > ";
+	std::cout << "Enter square size...\n > ";
 	std::cin >> SIZE;
 	std::cout << "Enter threshold (0-1)\n > ";
 	std::cin >> THRESHOLD;
@@ -189,30 +298,47 @@ int main(int argc, char* argv[]) {
 		MODE = mode_ == 0 ? mode::cpu : mode::gpu;
 	}
 
-	std::vector mat(SIZE, std::vector<type>(SIZE, EMPTY));
+	std::vector<std::vector<type>> mat;
+	position					   start, end;
+	bool						   loaded = false;
 
-	FastNoiseLite noise;
-	noise.SetSeed(SEED);
-	noise.SetFrequency(0.2f);
-	noise.SetNoiseType(FastNoiseLite::NoiseType_Cellular);
-	noise.SetCellularReturnType(FastNoiseLite::CellularReturnType_Distance2Sub);
-	noise.SetCellularDistanceFunction(FastNoiseLite::CellularDistanceFunction_Euclidean);
-	noise.SetCellularJitter(0.25);
+	if (!load_file.empty()) {
+		if (load_matrix(load_file, SIZE, start, end, mat)) {
+			loaded = true;
+		} else {
+			std::cerr << "Warning: Could not load " << load_file << ", generating new map.\n";
+		}
+	}
 
-	auto [start, end] = prepare_matrix(mat, noise);
+	if (!loaded) {
+		mat.assign(SIZE, std::vector<type>(SIZE, EMPTY));
+
+		FastNoiseLite noise;
+		noise.SetSeed(SEED);
+		noise.SetFrequency(0.2f);
+		noise.SetNoiseType(FastNoiseLite::NoiseType_Cellular);
+		noise.SetCellularReturnType(FastNoiseLite::CellularReturnType_Distance2Sub);
+		noise.SetCellularDistanceFunction(FastNoiseLite::CellularDistanceFunction_Euclidean);
+		noise.SetCellularJitter(0.25);
+
+		auto points = prepare_matrix(mat, noise);
+		start		= points.first;
+		end			= points.second;
+
+		if (!save_file.empty()) {
+			save_matrix(save_file, SIZE, start, end, mat);
+			std::cout << "Generation complete. File saved. Exiting.\n";
+			return 0;
+		}
+	}
 
 	if (mode == "cpu") {
 		std::cout << "Executing CPU search...\n";
-		auto st = std::chrono::high_resolution_clock::now();
-		find_shortest_path(mat, start, end);
-		auto en = std::chrono::high_resolution_clock::now();
-		std::cout << "Time spent pathfinding [cpu] is: "
-				  << std::chrono::duration_cast<std::chrono::milliseconds>(en - st).count()
-				  << " ms\n";
+		cpu::path_finder pf(mat, start, end);
+		auto			 path = pf.find_path();
 	} else if (mode == "gpu") {
 		std::cout << "Executing GPU search...\n";
 		gpu::path_finder_queue pfq(mat, start, end);
-
-		auto path = pfq.find_path();
+		auto				   path = pfq.find_path();
 	}
 }
