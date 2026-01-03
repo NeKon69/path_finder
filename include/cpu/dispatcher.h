@@ -5,8 +5,6 @@
 #include <thread>
 #include <vector>
 
-#include "common.h"
-
 namespace cpu {
 template<typename... OnBarrier>
 class dispatcher {
@@ -35,7 +33,7 @@ public:
 
         for (uint32_t i = 0; i < num_threads_; ++i) {
             threads.emplace_back(std::ref(runner), std::forward<T>(args)..., i,
-                                 std::ref(barrier));
+                                 num_threads_, std::ref(barrier));
         }
     }
 };

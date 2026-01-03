@@ -354,10 +354,10 @@ int main(int argc, char* argv[]) {
         std::cout << "Executing CPU search...\n";
         cpu::path_finder pf(mat, start, end);
         auto             path = pf.find_path();
-        for (auto const& val : path) {
-            mat[val.y][val.x] = 1;
-        }
-        prtype_matrix(mat);
+        // for (auto const& val : path) {
+        //     mat[val.y][val.x] = 1;
+        // }
+        // prtype_matrix(mat);
 
     } else if (mode == "gpu") {
         std::cout << "Executing GPU search...\n";

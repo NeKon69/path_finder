@@ -7,9 +7,8 @@
 #include <cuda_wrappers/surface.h>
 
 #include <cstdint>
+#include <limits>
 #include <vector>
-
-inline constexpr auto MAX_CURRENT = UINT32_MAX;
 
 #ifdef __CUDACC__
 #define DEVICE_HOST __device__ __host__
@@ -23,82 +22,83 @@ inline constexpr auto MAX_CURRENT = UINT32_MAX;
 
 using type = uint32_t;
 
-struct position {
-	type					 x, y;
-	auto DEVICE_HOST		 operator<=>(const position& other) const = default;
-	bool DEVICE_HOST		 operator==(const position& other) const  = default;
-	__host__ __device__ bool operator<(const position& other) const {
-		if (x != other.x)
-			return x < other.x;
-		return y < other.y;
-	}
+inline constexpr auto MAX_CURRENT = std::numeric_limits<type>::max();
 
-	__host__ __device__ bool operator>=(const position& other) const {
-		return !(*this < other);
-	}
+struct position {
+    type                     x, y;
+    auto DEVICE_HOST         operator<=>(const position& other) const = default;
+    bool DEVICE_HOST         operator==(const position& other) const  = default;
+    __host__ __device__ bool operator<(const position& other) const {
+        if (x != other.x)
+            return x < other.x;
+        return y < other.y;
+    }
+
+    __host__ __device__ bool operator>=(const position& other) const {
+        return !(*this < other);
+    }
 };
 
 using matrix = std::vector<std::vector<type>>;
 
 enum class mode { cpu, gpu };
 extern float THRESHOLD;
-extern type	 SIZE;
-extern type	 SEED;
-extern mode	 MODE;
+extern type  SIZE;
+extern type  SEED;
+extern mode  MODE;
 // Don't change this to lower values!!! or my gpu logic is screwed
-inline constexpr type WALL		= MAX_CURRENT - 1;
-inline constexpr type TARGET	= MAX_CURRENT - 2;
-inline constexpr type EMPTY		= MAX_CURRENT - 3;
+inline constexpr type WALL      = MAX_CURRENT - 1;
+inline constexpr type TARGET    = MAX_CURRENT - 2;
+inline constexpr type EMPTY     = MAX_CURRENT - 3;
 inline constexpr type UNCHECKED = MAX_CURRENT - 4;
 static_assert(EMPTY < TARGET && TARGET < WALL && EMPTY > MAX_CURRENT / 2,
-			  "THIS IS NECESSARY FOR THE GPU WAVEFRONT TO WORK, DON'T CHANGE THAT!!!");
-// should be a multiple of 32
+              "THIS IS NECESSARY FOR THE GPU WAVEFRONT TO WORK, DON'T CHANGE THAT!!!");
 
 CONSTANT_MEM static inline constexpr int dr[] = {-1, 1, 0, 0};
 CONSTANT_MEM static inline constexpr int dc[] = {0, 0, -1, 1};
 
 DEVICE_HOST inline bool is_path(type val) {
-	return val > 0 && val < EMPTY;
+    return val > 0 && val < EMPTY;
 }
 inline bool DEVICE_HOST inside_bounds(type row, type col, type width, type height) {
-	return row >= 0 && row < height && col >= 0 && col < width;
+    return row >= 0 && row < height && col >= 0 && col < width;
 }
 inline bool DEVICE_HOST is_target(type val) {
-	return val == TARGET || val == EMPTY;
+    return val == TARGET || val == EMPTY;
 }
 inline bool DEVICE_HOST is_marked(type val) {
-	return val > 0 && val < EMPTY;
+    return val > 0 && val < EMPTY;
 }
 DEVICE_HOST inline bool is_real_target(type val) {
-	return val == TARGET;
+    return val == TARGET;
 }
 DEVICE inline type min(type a, type b, type c, type d) {
-	type vals[4] = {a, b, c, d};
-	type min	 = EMPTY;
-	for (auto& val : vals) {
-		if (!is_marked(val)) {
-			val = WALL;
-			continue;
-		}
-		if (min > val) {
-			min = val;
-		}
-	}
-	return min;
+    type vals[4] = {a, b, c, d};
+    type min     = EMPTY;
+    for (auto& val : vals) {
+        if (!is_marked(val)) {
+            val = WALL;
+            continue;
+        }
+        if (min > val) {
+            min = val;
+        }
+    }
+    return min;
 }
 
 struct device_array {
-	raw::cuda_wrappers::channel_format_description										format;
-	raw::cuda_wrappers::array															array;
-	raw::cuda_wrappers::resource_description<raw::cuda_wrappers::resource_types::array> description;
-	raw::cuda_wrappers::surface															surface;
-	device_array(std::shared_ptr<raw::cuda_wrappers::cuda_stream> stream, int width, int height)
-		: format(cudaChannelFormatKindUnsigned, 8 * sizeof(type)),
-		  array(stream, format, width, height) {
-		description.set_array(array.get());
-		surface.create(description);
-	}
-	raw::cuda_wrappers::array* operator->() {
-		return &array;
-	}
+    raw::cuda_wrappers::channel_format_description                                      format;
+    raw::cuda_wrappers::array                                                           array;
+    raw::cuda_wrappers::resource_description<raw::cuda_wrappers::resource_types::array> description;
+    raw::cuda_wrappers::surface                                                         surface;
+    device_array(std::shared_ptr<raw::cuda_wrappers::cuda_stream> stream, int width, int height)
+        : format(cudaChannelFormatKindUnsigned, 8 * sizeof(type)),
+          array(stream, format, width, height) {
+        description.set_array(array.get());
+        surface.create(description);
+    }
+    raw::cuda_wrappers::array* operator->() {
+        return &array;
+    }
 };
