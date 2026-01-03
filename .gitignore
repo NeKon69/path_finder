@@ -141,3 +141,4 @@ main
 .nvim
 include/gpu/noise
 temp*
+build_*/
