@@ -32,14 +32,19 @@ private:
                              position end, type width, type height,
                              uint32_t t_id, uint32_t total_threads,
                              std::barrier<>& barrier) {
-        type depth = 0;
+        type depth      = 0;
+        type work_start = 0;
+        type work_end   = 0;
 
         if (t_id == 0) {
             curr_q[curr_q_cnt->fetch_add(1, std::memory_order_release)] =
                 start.x + start.y * width;
             matrix[start.x + start.y * width] = depth++;
-            matrix[end.x + end.y * width]     = EMPTY;
+            work_end++;
+            matrix[end.x + end.y * width] = EMPTY;
         }
+
+        barrier.arrive_and_wait();
 
         depth = 1;
         type curr_x;
@@ -47,9 +52,7 @@ private:
         type val;
 
         while (curr_q_cnt->load(std::memory_order::relaxed) != 0) {
-            for (uint64_t i = t_id;
-                 i < curr_q_cnt->load(std::memory_order::relaxed);
-                 i += total_threads) {
+            for (uint64_t i = work_start; i < work_end; i += 1) {
                 val    = curr_q[i];
                 curr_x = val % width;
                 curr_y = val / width;
@@ -64,8 +67,7 @@ private:
                         // std::print(std::cout,
                         //            "t_id: {}, x: {} y: {}, depth: {}\n",
                         //            t_id, next_x, next_y, depth);
-                        std::atomic_ref<type> val(
-                            matrix[next_x + next_y * width]);
+
                         // C++ compiler for some reason does not in fact like
                         // when you pass const value to atomic_cas, which is
                         // super wierd and also stupid
@@ -73,7 +75,8 @@ private:
                         type current_val = matrix[idx];
                         if (current_val == EMPTY) {
                             std::atomic_ref<type> atom(matrix[idx]);
-                            if (atom.compare_exchange_strong(empty, depth)) {
+                            if (atom.compare_exchange_strong(
+                                    empty, depth, std::memory_order_relaxed)) {
                                 if (position(next_x, next_y) == end) {
                                     // std::print(
                                     //     std::cout,
@@ -90,24 +93,33 @@ private:
                         }
                     }
                 }
-
-                barrier.arrive_and_wait();
-                if (t_id == 0) {
-                    curr_q_cnt->store(0, std::memory_order_relaxed);
-                }
-
-                barrier.arrive_and_wait();
-                if (found.load()) {
-                    break;
-                }
-
-                std::swap(curr_q, next_q);
-                std::swap(curr_q_cnt, next_q_cnt);
-
-                barrier.arrive_and_wait();
-
-                depth++;
             }
+
+            barrier.arrive_and_wait();
+            if (t_id == 0) {
+                curr_q_cnt->store(0, std::memory_order_relaxed);
+            }
+
+            barrier.arrive_and_wait();
+            if (found.load(std::memory_order_relaxed)) {
+                break;
+            }
+
+            std::swap(curr_q, next_q);
+            std::swap(curr_q_cnt, next_q_cnt);
+
+            type tasks =
+                curr_q_cnt->load(std::memory_order_relaxed) / total_threads;
+            uint16_t leftover =
+                curr_q_cnt->load(std::memory_order_relaxed) % total_threads;
+
+            work_start = t_id * tasks + (leftover > t_id ? t_id : leftover);
+            work_end =
+                (t_id + 1) * tasks + (leftover > t_id ? t_id + 1 : leftover);
+
+            barrier.arrive_and_wait();
+
+            depth++;
         }
     }
 

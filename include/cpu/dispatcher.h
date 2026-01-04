@@ -6,7 +6,10 @@
 #include <vector>
 
 namespace cpu {
-template<typename... OnBarrier>
+template<typename... Ts>
+concept Optional = requires(Ts...) { sizeof...(Ts) <= 1; };
+
+template<Optional... OnBarrier>
 class dispatcher {
 private:
     uint32_t                   num_threads_;
@@ -23,7 +26,6 @@ private:
 
 public:
     constexpr dispatcher(uint32_t num_threads = 1, OnBarrier... on_barrier)
-        requires(sizeof...(OnBarrier) <= 1)
         : num_threads_(calc_threads(num_threads)),
           barrier(this->num_threads_, on_barrier...) {}
 

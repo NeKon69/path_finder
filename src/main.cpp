@@ -81,12 +81,6 @@ void reconstruct_the_path(std::vector<std::vector<type>>& mat, position end) {
     }
 }
 
-///
-/// @brief asdsd
-/// @param mat
-/// @param noise
-/// @param start
-/// @param end
 std::pair<position, position> prepare_matrix(
     std::vector<std::vector<type>>& mat, const FastNoiseLite& noise) {
     std::mt19937                          gen(SEED);
