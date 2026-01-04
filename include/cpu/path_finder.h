@@ -108,10 +108,10 @@ private:
             std::swap(curr_q, next_q);
             std::swap(curr_q_cnt, next_q_cnt);
 
-            type tasks =
-                curr_q_cnt->load(std::memory_order_relaxed) / total_threads;
-            uint16_t leftover =
-                curr_q_cnt->load(std::memory_order_relaxed) % total_threads;
+            type q_cnt = curr_q_cnt->load(std::memory_order_relaxed);
+
+            type     tasks    = q_cnt / total_threads;
+            uint16_t leftover = q_cnt % total_threads;
 
             work_start = t_id * tasks + (leftover > t_id ? t_id : leftover);
             work_end =
