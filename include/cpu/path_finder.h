@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -35,6 +36,11 @@ private:
         type depth      = 0;
         type work_start = 0;
         type work_end   = 0;
+
+        // False-sharing optimization
+        constexpr type                    CACHE_LINE_SIZE = 64;
+        std::array<type, CACHE_LINE_SIZE> local_q;
+        type                              local_count = 0;
 
         if (t_id == 0) {
             curr_q[curr_q_cnt->fetch_add(1, std::memory_order_release)] =
@@ -86,13 +92,26 @@ private:
                                     found.store(true,
                                                 std::memory_order_relaxed);
                                 }
-                                next_q[next_q_cnt->fetch_add(
-                                    1, std::memory_order_relaxed)] =
-                                    next_x + next_y * width;
+                                local_q[local_count++] = idx;
+                                if (local_count == CACHE_LINE_SIZE) {
+                                    type offset = next_q_cnt->fetch_add(
+                                        local_count, std::memory_order_relaxed);
+                                    std::memcpy(next_q + offset, local_q.data(),
+                                                local_count * sizeof(type));
+                                    local_count = 0;
+                                }
                             }
                         }
                     }
                 }
+            }
+
+            if (local_count > 0) {
+                type offset = next_q_cnt->fetch_add(local_count,
+                                                    std::memory_order_relaxed);
+                std::memcpy(next_q + offset, local_q.data(),
+                            local_count * sizeof(type));
+                local_count = 0;
             }
 
             barrier.arrive_and_wait();
