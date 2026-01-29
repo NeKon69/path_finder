@@ -23,11 +23,6 @@ message(STATUS "CMAKE_CUDA_HOST_COMPILER: ${CMAKE_CUDA_HOST_COMPILER}")
 
 include(FetchContent)
 
-# when no network!!!!!!1
-set(FETCHCONTENT_FULLY_DISCONECTED OFF CACHE BOOL "No network" FORCE)
-set(FETCHCONTENT_UPDATES_DISCONECTED OFF CACHE BOOL "No network" FORCE)
-set(FETCHCONTENT_FULLY_DISCONNECTED OFF CACHE BOOL "No network" FORCE)
-set(FETCHCONTENT_UPDATES_DISCONNECTED OFF CACHE BOOL "No network" FORCE)
 
 FetchContent_Declare(
   cuda_wrappers
@@ -39,13 +34,14 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/NeKon69/FastNoiseLiteCUDA
   GIT_TAG main)
 
-FetchContent_MakeAvailable(FastNoiseLiteCUDA)
-
-add_library(cuda_wrappers INTERFACE)
+FetchContent_MakeAvailable(cuda_wrappers FastNoiseLiteCUDA)
 
 set(NOISE_HEADER_SOURCE
     ${fastnoiselitecuda_SOURCE_DIR}/include/FastNoiseLiteCUDA.h)
+message(STATUS "FastNoise Path: ${fastnoiselitecuda_SOURCE_DIR}")
 set(NOISE_HEADER_DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/include/gpu/noise)
+
+message(STATUS "FastNoise Path: ${fastnoiselitecuda_SOURCE_DIR}")
 
 file(MAKE_DIRECTORY ${NOISE_HEADER_DESTINATION})
 file(COPY ${NOISE_HEADER_SOURCE} DESTINATION ${NOISE_HEADER_DESTINATION})
@@ -72,10 +68,11 @@ target_compile_options(
           $<$<AND:$<CONFIG:MinSizeRel>,$<CXX_COMPILER_ID:Clang>>:-Os>
           $<$<AND:$<CONFIG:MinSizeRel>,$<CXX_COMPILER_ID:MSVC>>:/Os>)
 
-target_include_directories(${PROJECT_NAME} PRIVATE include)
-target_include_directories(cuda_wrappers
-                           INTERFACE ${cuda_wrappers_SOURCE_DIR}/include)
-target_link_libraries(${PROJECT_NAME} PRIVATE cuda_wrappers CUDA::cudart)
+message(STATUS "Wrapped Repo Path: ${cuda_wrappers_SOURCE_DIR}")
+
+target_include_directories(
+  ${PROJECT_NAME} PRIVATE include ${cuda_wrappers_SOURCE_DIR}/include)
+target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart)
 
 if(CMAKE_EXPORT_COMPILE_COMMANDS)
     add_custom_target(

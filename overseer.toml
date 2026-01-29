@@ -1,0 +1,19 @@
+profiles = ["Debug", "Release"]
+
+[build]
+cmd = "cmake -B build_{profile} -DCMAKE_BUILD_TYPE={profile} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && cmake --build build_{profile}"
+
+[run]
+depends = "build"
+cmd = "./build_{profile}/path_finder"
+
+[test]
+depends = "build"
+cmd = "cd build_{profile} && ctest -C {profile} --output-on-failure"
+
+[clean]
+cmd = "rm -rf build_{profile}"
+
+[format]
+cmd = "clang-format -i src/*.cpp include/*.h"
+

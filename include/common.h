@@ -51,8 +51,9 @@ inline constexpr type WALL      = MAX_CURRENT - 1;
 inline constexpr type TARGET    = MAX_CURRENT - 2;
 inline constexpr type EMPTY     = MAX_CURRENT - 3;
 inline constexpr type UNCHECKED = MAX_CURRENT - 4;
-static_assert(EMPTY < TARGET && TARGET < WALL && EMPTY > MAX_CURRENT / 2,
-              "THIS IS NECESSARY FOR THE GPU WAVEFRONT TO WORK, DON'T CHANGE THAT!!!");
+static_assert(
+    EMPTY < TARGET && TARGET < WALL && EMPTY > MAX_CURRENT / 2,
+    "THIS IS NECESSARY FOR THE GPU WAVEFRONT TO WORK, DON'T CHANGE THAT!!!");
 
 CONSTANT_MEM static inline constexpr int dr[] = {-1, 1, 0, 0};
 CONSTANT_MEM static inline constexpr int dc[] = {0, 0, -1, 1};
@@ -60,7 +61,8 @@ CONSTANT_MEM static inline constexpr int dc[] = {0, 0, -1, 1};
 DEVICE_HOST inline bool is_path(type val) {
     return val > 0 && val < EMPTY;
 }
-inline bool DEVICE_HOST inside_bounds(type row, type col, type width, type height) {
+inline bool DEVICE_HOST inside_bounds(type row, type col, type width,
+                                      type height) {
     return row >= 0 && row < height && col >= 0 && col < width;
 }
 inline bool DEVICE_HOST is_target(type val) {
@@ -88,11 +90,14 @@ DEVICE inline type min(type a, type b, type c, type d) {
 }
 
 struct device_array {
-    raw::cuda_wrappers::channel_format_description                                      format;
-    raw::cuda_wrappers::array                                                           array;
-    raw::cuda_wrappers::resource_description<raw::cuda_wrappers::resource_types::array> description;
-    raw::cuda_wrappers::surface                                                         surface;
-    device_array(std::shared_ptr<raw::cuda_wrappers::cuda_stream> stream, int width, int height)
+    raw::cuda_wrappers::channel_format_description format;
+    raw::cuda_wrappers::array                      array;
+    raw::cuda_wrappers::resource_description<
+        raw::cuda_wrappers::resource_types::array>
+                                description;
+    raw::cuda_wrappers::surface surface;
+    device_array(std::shared_ptr<raw::cuda_wrappers::cuda_stream> stream,
+                 int width, int height)
         : format(cudaChannelFormatKindUnsigned, 8 * sizeof(type)),
           array(stream, format, width, height) {
         description.set_array(array.get());
