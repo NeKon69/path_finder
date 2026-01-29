@@ -167,6 +167,6 @@ int main(int argc, char* argv[]) {
         std::cout << "Executing GPU search...\n";
         gpu::path_finder_queue pfq(mat, start, end);
         auto                   path = pfq.find_path();
-        print_mat_path(mat, path);
+        // print_mat_path(mat, path);
     }
 }
