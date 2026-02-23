@@ -1,16 +1,16 @@
-#include <type_traits>
+#include <print>
 #include <vector>
 
 #include "common.h"
 
-inline std::vector<position> reconstruct_path_flat(type* matrix, int width,
-                                                   int height, position end) {
+inline auto reconstruct_path_flat(type* matrix, int width, int height,
+                                  position end) -> std::vector<position> {
     std::vector<position> path;
     path.reserve(width + height);
 
     position curr = end;
     path.push_back(curr);
-    type current_val = matrix[curr.y * width + curr.x];
+    type current_val = matrix[(curr.y * width) + curr.x];
 
     while (current_val > 0 && current_val < TARGET) {
         bool found_prev = false;
@@ -21,13 +21,13 @@ inline std::vector<position> reconstruct_path_flat(type* matrix, int width,
 
             if (next_y >= 0 && next_y < height && next_x >= 0 &&
                 next_x < width) {
-                uint64_t next_idx = next_y * width + next_x;
+                uint64_t next_idx = (next_y * width) + next_x;
                 type     val      = matrix[next_idx];
 
                 if (val == current_val - 1) {
                     current_val = val;
-                    curr        = {static_cast<unsigned int>(next_x),
-                                   static_cast<unsigned int>(next_y)};
+                    curr        = {.x = static_cast<unsigned int>(next_x),
+                                   .y = static_cast<unsigned int>(next_y)};
                     path.push_back(curr);
                     found_prev = true;
                     break;
@@ -42,10 +42,10 @@ inline std::vector<position> reconstruct_path_flat(type* matrix, int width,
     }
 
     for (const auto& pos : path) {
-        matrix[pos.y * width + pos.x] = 1;
+        matrix[(pos.y * width) + pos.x] = 1;
     }
-    matrix[end.y * width + end.x]   = 1;
-    matrix[curr.y * width + curr.x] = 1;
+    matrix[(end.y * width) + end.x]   = 1;
+    matrix[(curr.y * width) + curr.x] = 1;
 
     return path;
 }
